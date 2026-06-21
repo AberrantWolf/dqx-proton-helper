@@ -1,0 +1,5 @@
+# Nothing game-related is stored here — prefixes/installers live elsewhere.
+# Editor / OS cruft only.
+*~
+*.swp
+.DS_Store
