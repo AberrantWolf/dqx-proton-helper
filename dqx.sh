@@ -60,17 +60,26 @@ require_proton() {
 
 # Run a command through umu-run with the DQX environment.
 # Any WINEPATH exported by the caller is inherited (used by 'play').
+# If DQX_INHIBIT!=0 (set by 'play'), wrap in systemd-inhibit so the desktop
+# doesn't sleep/blank during gameplay — gamepad input does NOT reset the
+# Wayland idle timer, so we hold an idle+sleep lock for the game's lifetime.
 umu_run() {
   command -v umu-run >/dev/null 2>&1 || die "umu-run not found — install umu-launcher."
-  GAMEID=0 \
-  PROTONPATH="$PROTONPATH" \
-  WINEPREFIX="$DQX_PREFIX" \
-  STEAM_COMPAT_DATA_PATH="$DQX_PREFIX" \
-  STEAM_COMPAT_CLIENT_INSTALL_PATH="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.steam/steam}" \
-  PROTON_VERB="${PROTON_VERB:-waitforexitandrun}" \
-  PROTON_USE_WOW64=1 \
-  LC_ALL=ja_JP.utf8 \
-  umu-run "$@"
+  local -a inhibit=()
+  if [ "${DQX_INHIBIT:-0}" != 0 ] && command -v systemd-inhibit >/dev/null 2>&1; then
+    inhibit=(systemd-inhibit --what=idle:sleep --who="Dragon Quest X"
+             --why="Gameplay (controller input does not reset the idle timer)")
+  fi
+  "${inhibit[@]}" env \
+    GAMEID=0 \
+    PROTONPATH="$PROTONPATH" \
+    WINEPREFIX="$DQX_PREFIX" \
+    STEAM_COMPAT_DATA_PATH="$DQX_PREFIX" \
+    STEAM_COMPAT_CLIENT_INSTALL_PATH="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.steam/steam}" \
+    PROTON_VERB="${PROTON_VERB:-waitforexitandrun}" \
+    PROTON_USE_WOW64=1 \
+    LC_ALL=ja_JP.utf8 \
+    umu-run "$@"
 }
 
 cmd_doctor() {
@@ -126,6 +135,8 @@ cmd_play() {
   # WINEPATH puts the Game\ dir on Wine's exe search path so the launcher can
   # spawn DQXGame.exe (which it launches by bare name after login).
   export WINEPATH="$GAME_WIN_GAMEDIR"
+  # Keep the desktop awake during play (set DQX_INHIBIT=0 to disable).
+  : "${DQX_INHIBIT:=1}"; export DQX_INHIBIT
   msg "Launching DQX. First run downloads/patches (~31 GB) via the in-game updater."
   msg "Tip: a transient 'DQ-10009 / can't connect' right after the first boot update"
   msg "     is harmless — just run ./dqx.sh play again."

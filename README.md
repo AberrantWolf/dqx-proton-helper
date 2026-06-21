@@ -82,6 +82,12 @@ full game. After that, `./dqx.sh play` goes straight to the launcher → login.
 
 ## Known issues / tips
 
+- **Sleeping during controller play.** On Wayland, gamepad input does **not** reset the
+  desktop idle timer, so the screen can blank / the machine can suspend mid-game. `play`
+  holds a `systemd-inhibit --what=idle:sleep` lock for the game's lifetime to prevent this
+  (disable with `DQX_INHIBIT=0`). If your screen *still* blanks under KDE, your
+  screen-energy-saving may need the freedesktop ScreenSaver inhibition instead — open an
+  issue and we'll add it.
 - **`DQ-10009` "could not connect to the internet"** right after the first boot
   self-update is a transient transition glitch — just `./dqx.sh play` again. (Real
   connectivity is fine; the boot update already succeeded.)
