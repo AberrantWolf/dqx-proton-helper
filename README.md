@@ -1,42 +1,48 @@
 # dqx-proton-helper
 
 Helper scripts to run **Dragon Quest X Online (Japanese client)** on Linux with
-**Proton**, outside of Steam and Lutris. They create a Proton prefix, run *your
-own* copy of the official DQX installer into it, and launch the game with the few
-non-obvious settings that make it work end-to-end (gameplay + the launcher movie
-+ in-game FMV cutscenes).
+**Proton** (outside of Steam or Lutris). They create a Proton prefix, run your copy
+of the DQX installer into it, and launch the game with the few non-obvious settings
+that make it work correctly (gameplay + the launcher movie + in-game FMV cutscenes).
 
 > **This does not download or provide the game.** You need your own DQX installer
-> and an active Square Enix account. See **[Getting the game](#getting-the-game)**.
+> and an active Square Enix account. Other guides have that information (see
+> **[Getting the game](#getting-the-game)**).
 
 ---
 
-## Status / what's actually verified
+## Status
 
-- ✅ **Verified working** on **CachyOS** with **`proton-cachyos-11`** (Wine 11): full
-  install → patch download → login → gameplay, launcher movie, and in-game FMV (via
-  the 思い出プロジェクター / memory projector).
-- 🟡 **Expected to work** on **GE-Proton ≥ 10-34**: the specific client crash that this
-  setup avoids was confirmed absent there with new-WoW64, but the *full* flow was not
-  run on it. Please report back.
+- ✅ **Verified working** on **CachyOS** with **`proton-cachyos-11`** (based on Wine 11):
+  full install → patch download → login → gameplay, launcher movie, and in-game FMV (via
+  the おもいで映写機 / memory projector).
+- 🟡 **Probably works** on **GE-Proton ≥ 10-34**: I tried at least some of the launcher
+  setup, and this will enable the "new-WoW64" path via Proton args, but I didn't verify if
+  any cutscenes played, nor did I actually log in. So if you run it, please report back.
 - ❌ **Plain Wine is not supported.** The game client crashes (null-pointer deref)
-  without Proton's **new-WoW64** mode, and there's no equivalent lever in vanilla Wine.
+  without Proton's **new-WoW64** mode, it seems, and there's maybe no equivalent option in
+  vanilla Wine.
 
-If you get it working on another Proton build, a PR/issue noting the build + result
-is welcome.
+If you get it working on another Proton build, a PR/issue noting the build + result is
+welcome. This is just something I spent way too long vibing out with Claude Code over a
+couple days, so I'm not precious about it.
 
 ## Prerequisites
 
 - A Linux box with a working Vulkan GPU driver.
 - **[umu-launcher](https://github.com/Open-Wine-Components/umu-launcher)** (`umu-run` on PATH).
 - A **Proton build with new-WoW64**: **GE-Proton ≥ 10-34** or **proton-cachyos**,
-  placed in a Steam `compatibilitytools.d/` directory (or point `PROTONPATH` at it).
-- The **`ja_JP.utf8`** locale generated on your system.
-- **Your own DQX "All-In-One" installer** (`Setup.exe`) — see below.
+  placed in a Steam `compatibilitytools.d/` directory (or point `PROTONPATH` at it). (on
+  my machine, this was just already installed, so I can't help you if yours doesn't have
+  something like this... maybe it's not even needed?)
+- The **`ja_JP.utf8`** locale generated on your system. This makes it so that more of the
+  install dialogs and system dialogs come up with something other than gibberish or empty
+  squares.
+- **Your DQX "All-In-One" installer** (`Setup.exe`) — see below.
 - An active **Square Enix account** with DQX registered.
 - ~**35 GB+** free disk.
 
-Run `./dqx.sh doctor` to check the first three.
+(Run `./dqx.sh doctor` to check the first three.)
 
 ## Getting the game
 
@@ -47,38 +53,49 @@ registering the game (installer, account, region, payment), use the community gu
 - DQX Translation Project FAQ: <https://dqx-translation-project.github.io/faq/faq/>
 - The **"DQX on Steam Deck / Linux / WINE"** thread in the DQX community Discord.
 
+> I get my installer through the purchase history page on the Square Enix store, since
+> that's how I bought the game. But the installer comes from various places as I
+> understand it.
+
 ## Usage
 
 ```sh
 ./dqx.sh doctor                    # check prerequisites
 ./dqx.sh setup                     # create a clean Proton prefix
-./dqx.sh install ~/Downloads/Setup.exe   # run YOUR installer; install to the DEFAULT path
+./dqx.sh install your/path/to/Setup.exe   # run your installer; install to the DEFAULT path
 ./dqx.sh play                      # first run downloads/patches ~31 GB; then log in
 ```
 
-First `play` will sit on the updater for a while (tens of minutes) while it pulls the
-full game. After that, `./dqx.sh play` goes straight to the launcher → login.
+> When installing the game, pick the default location, otherwise the launch helper
+> script won't find it.
+
+Thf first time you run with `play`, the launcher drops into updater mode, which is normal.
+It's downloading like 27GiB of data or something, as is the way with MMOs, so let it sit
+for a while. After that, `./dqx.sh play` goes to the launcher where you can login.
 
 ### Configuration (environment variables)
+
+You can customize tom paths if needed. But the defaults are probably fine.
 
 | Variable     | Default              | Meaning                                   |
 |--------------|----------------------|-------------------------------------------|
 | `DQX_PREFIX` | `~/Games/dqx-prefix` | Where the Proton prefix lives             |
 | `PROTONPATH` | auto-detected        | Path to the Proton build to use           |
 
-## Why these specific settings (the hard-won bits)
+## What Does the Helper Customize?
 
 - **`PROTON_USE_WOW64=1` (new-WoW64)** — without it the game client (`DQXGame.exe`)
-  crashes on launch with a null-pointer deref. This is *the* reason plain Wine won't do.
+  crashes on launch with a null-pointer deref. This seems to be *the* reason plain Wine
+  won't do. Happy to be wrong if you try it, though.
 - **`WINEPATH=…\DRAGON QUEST X\Game`** — after login the launcher starts `DQXGame.exe`
-  by bare name; without the Game directory on the search path you get `ErrorCode = 2`.
-- **Fresh install, not a copied tree** — the launcher's content-update step deadlocks if
-  you drop a pre-existing/complete game tree into the prefix. Let the in-game updater
-  download into the prefix it lives in. (These scripts do that by default.)
-- **Japanese locale** — the client needs `ja_JP.utf8`.
-- **No LAV Filters / WebView2 / wmp needed** — the launcher movie and in-game FMVs
-  (WMV3) decode through Proton's bundled GStreamer (`avdec_wmv3`). Don't bother installing
-  codec packs.
+  by bare name; without the Game directory on the search path you get `ErrorCode = 2`
+  and the launcher claims your install is corrupted (which it probably isn't).
+- **Japanese locale** — the client needs `ja_JP.utf8`, otherwise the pre-game (especially
+  config tool) text is even more unreadable than if you can't read Japanese.
+
+## What I Ended Up NOT Needing
+- **LAV Filters / WebView2 / wmp** — the launcher movie and in-game FMVs (WMV3) decode
+  through Proton's bundled GStreamer (`avdec_wmv3`). Don't bother installing codec packs.
 
 ## Known issues / tips
 
@@ -89,10 +106,14 @@ full game. After that, `./dqx.sh play` goes straight to the launcher → login.
   screen-energy-saving may need the freedesktop ScreenSaver inhibition instead — open an
   issue and we'll add it.
 - **`DQ-10009` "could not connect to the internet"** right after the first boot
-  self-update is a transient transition glitch — just `./dqx.sh play` again. (Real
-  connectivity is fine; the boot update already succeeded.)
-- **Black rectangles** in the launcher are a cosmetic GDI redraw issue, not a failure.
-- The launcher may spawn a brief **"already running"** popup — dismiss it.
+  self-update is a transient transition glitch I saw once — just run `./dqx.sh play` again.
+  (Real connectivity is probably fine.)
+- **Black rectangles** in the launcher are a cosmetic GDI redraw issue. It sucks, but I'm
+  fairly sure they don't have any effect on the game itself. It's just weirdness with Wine
+  versus how Windows apps can assume they work.
+- If the launcher spawns a brief **"already running"** popup, you may need to reinstall
+  your game. This happened when I was copying pre-installed assets between prefixes, and
+  the only fix that worked was to completely reinstall the whole game in the prefix.
 
 ## License
 
