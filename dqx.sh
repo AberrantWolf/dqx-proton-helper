@@ -6,9 +6,10 @@
 # installer into it, and launches the game with the handful of non-obvious settings
 # that make it work. It does NOT download or provide the game itself.
 #
-# No Proton, no umu, no Steam — just a sufficiently modern Wine. The game is a
-# 32-bit DirectX 9 client; it runs through Wine's new-WoW64 mode and renders via
-# wined3d (D3D9 -> OpenGL). (Tested with vanilla wine-11.11; Wine >= 10 recommended.)
+# Default path: plain Wine, no Steam or Lutris. Ubuntu also has a tested
+# GE-Proton11/umu fallback because WineHQ currently trips over DQXTitle startup.
+# The game is a 32-bit DirectX 9 client; it runs through Wine's new-WoW64 mode
+# and renders via wined3d (D3D9 -> OpenGL).
 #
 # Public domain (Unlicense). NO WARRANTY. See README.md and UNLICENSE.
 #
@@ -16,7 +17,8 @@
 #   ./dqx.sh doctor                  # check prerequisites
 #   ./dqx.sh setup                   # create + provision a clean Wine prefix
 #   ./dqx.sh install /path/Setup.exe # run YOUR DQX installer into the prefix
-#   ./dqx.sh play                    # launch the game
+#   ./dqx.sh play                    # launch the game with plain Wine
+#   ./dqx.sh play-umu                # Ubuntu fallback: launch with GE-Proton11 via umu
 #
 # Config (override via environment):
 #   DQX_PREFIX   Prefix location          (default: ~/Games/dqx-prefix)
@@ -25,11 +27,19 @@
 #   DQX_JP_FONT  Override: substitute the JP UI fonts with this host family instead of
 #                installing IPAMona via winetricks (default: IPAMona if winetricks present)
 #   DQX_INHIBIT  1=hold an idle/sleep lock while playing (default), 0=don't
+#   DQX_MOVIE_COMPAT_GAMEID  Wine WMReader movie workaround (default: 638160; empty disables)
+#   DQX_UMU      umu-run binary for play-umu (default: umu-run)
+#   DQX_PROTONPATH  GE-Proton path for play-umu (default: auto-detect GE-Proton11-1)
+#   DQX_UMU_GAMEID  UMU GAMEID for play-umu (default: dqx; deliberately no Steam app id)
 set -euo pipefail
 
 : "${DQX_PREFIX:=$HOME/Games/dqx-prefix}"
 : "${WINE:=wine}"
 : "${DQX_LOCALE:=ja_JP.utf8}"
+: "${DQX_MOVIE_COMPAT_GAMEID:=638160}"
+: "${DQX_UMU:=umu-run}"
+: "${DQX_PROTONPATH:=}"
+: "${DQX_UMU_GAMEID:=dqx}"
 
 GAME_REL="drive_c/Program Files (x86)/SquareEnix/DRAGON QUEST X"
 GAME_WIN_GAMEDIR='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game'
@@ -48,6 +58,7 @@ JP_FONT_NAMES=(
 msg()  { printf '\033[1;36m>>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
+section() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mXX\033[0m %s\n' "$*" >&2; exit 1; }
 
 # --- Wine discovery / capability probing ---------------------------------------
@@ -130,17 +141,23 @@ note_fail() { DOCTOR_OK=0; }
 check_wine() {
   if ! have_wine; then
     warn "Wine: '$WINE' not found. Install Wine (>= 10; 11.x tested) or set WINE=/path/to/wine."
+    apt_hint "install WineHQ devel/staging, or use './dqx.sh play-umu' with GE-Proton11 on Ubuntu"
     note_fail; return
   fi
-  local parts maj min
+  local parts maj min ver
+  ver="$("$WINE" --version 2>/dev/null || true)"
   parts="$(wine_version_parts)"
   if [ -z "$parts" ]; then
-    warn "Wine: found '$WINE' but could not parse its version ($("$WINE" --version 2>/dev/null))."
+    warn "Wine: found '$WINE' but could not parse its version ($ver)."
   else
     read -r maj min <<<"$parts"
-    if [ "$maj" -ge 11 ] 2>/dev/null; then ok "Wine: $("$WINE" --version) (>= 11, tested)"
-    elif [ "$maj" -ge 10 ] 2>/dev/null; then ok "Wine: $("$WINE" --version) (>= 10, should work)"
-    else warn "Wine: $("$WINE" --version) is older than 10 — new-WoW64 may be immature; untested. Upgrade recommended."; fi
+    if [ "$maj" -gt 11 ] 2>/dev/null || { [ "$maj" -eq 11 ] 2>/dev/null && [ "$min" -ge 11 ] 2>/dev/null; }; then
+      ok "Wine: $ver (new enough; known-good baseline is wine-11.11 on CachyOS)"
+    elif [ "$maj" -eq 11 ] 2>/dev/null; then
+      warn "Wine: $ver is Wine 11, but older than the known-good wine-11.11 baseline."
+      warn "  If title movies crash, try Wine devel/staging or another Wine build before chasing codecs."
+    elif [ "$maj" -ge 10 ] 2>/dev/null; then ok "Wine: $ver (>= 10, should work but older than tested wine-11.11)"
+    else warn "Wine: $ver is older than 10 — new-WoW64 may be immature; untested. Upgrade recommended."; fi
   fi
   if is_new_wow64; then ok "Wine type: new-WoW64 build (can run the 32-bit client in a 64-bit prefix)"
   else warn "Wine type: could not confirm new-WoW64 (no wow64.dll found). Plain multilib Wine is untested with DQX."; fi
@@ -150,8 +167,9 @@ check_locale() {
   if locale -a 2>/dev/null | grep -qiE "^${DQX_LOCALE//./\\.}$|^ja_JP\.(utf8|UTF-8)$"; then
     ok "Locale '$DQX_LOCALE': present"
   else
-    warn "Locale '$DQX_LOCALE': MISSING. Generate a Japanese UTF-8 locale (e.g. add 'ja_JP.UTF-8 UTF-8'"
-    warn "  to /etc/locale.gen and run locale-gen, or 'localedef -i ja_JP -f UTF-8 ja_JP.UTF-8'). The JP client needs it."
+    warn "Locale '$DQX_LOCALE': MISSING. The Japanese client needs a Japanese UTF-8 locale."
+    apt_hint "sudo apt install locales && sudo locale-gen ja_JP.UTF-8"
+    warn "  Generic fix: add 'ja_JP.UTF-8 UTF-8' to /etc/locale.gen and run locale-gen."
     note_fail
   fi
 }
@@ -173,6 +191,7 @@ check_fonts() {
     ok "  Host fallback OK: $(fc-list :lang=ja 2>/dev/null | wc -l) Japanese font(s) available ('$(detect_jp_font)')"
   else
     warn "  No host Japanese fonts either — install winetricks OR a CJK font, else text renders as tofu (□)."
+    apt_hint "sudo apt install winetricks fonts-noto-cjk"
     note_fail
   fi
 }
@@ -181,12 +200,40 @@ check_gstreamer() {
   if ! command -v gst-inspect-1.0 >/dev/null 2>&1; then
     warn "GStreamer (gst-inspect-1.0) not found — the launcher movie and in-game FMV cutscenes won't play."
     warn "  Install GStreamer + gst-libav (a.k.a. gstreamer1-libav / gst-plugins-libav)."
+    apt_hint "sudo apt install gstreamer1.0-tools gstreamer1.0-libav gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly"
     note_fail; return
   fi
-  if gst-inspect-1.0 avdec_wmv3 >/dev/null 2>&1; then
-    ok "FMV codec: gst-libav avdec_wmv3 (WMV9) present"
+
+  local e missing=()
+  for e in asfdemux avdec_wmv3 avdec_wmav2 videoconvert audioconvert audioresample; do
+    gst-inspect-1.0 "$e" >/dev/null 2>&1 || missing+=("$e")
+  done
+  if [ "${#missing[@]}" -eq 0 ]; then
+    ok "FMV stack: GStreamer ASF demux + WMV3/WMA decode components present"
   else
-    warn "FMV codec: gst-libav 'avdec_wmv3' MISSING — FMV cutscenes won't decode. Install gst-libav."
+    warn "FMV stack: missing GStreamer element(s): ${missing[*]}"
+    warn "  Install gst-libav plus the base/good/bad/ugly plugin sets (package names vary by distro)."
+    apt_hint "sudo apt install gstreamer1.0-tools gstreamer1.0-libav gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly"
+    note_fail
+  fi
+}
+
+check_graphics() {
+  command -v nvidia-smi >/dev/null 2>&1 || return 0
+  command -v dpkg-query >/dev/null 2>&1 || return 0
+
+  local drv_major installed
+  drv_major="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | sed -nE '1{s/^([0-9]+).*/\1/p;}')"
+  [ -n "$drv_major" ] || return 0
+
+  installed="$(dpkg-query -W -f='${binary:Package}\n' 'libnvidia-gl-*:i386' 2>/dev/null \
+    | grep -E "^libnvidia-gl-${drv_major}(-server)?:i386$" | head -1 || true)"
+  if [ -n "$installed" ]; then
+    ok "NVIDIA 32-bit OpenGL: $installed installed"
+  else
+    warn "NVIDIA 32-bit OpenGL: matching libnvidia-gl-${drv_major}:i386 package not found."
+    warn "  32-bit D3D9/wined3d can fail to create a GL context without the matching i386 NVIDIA GL package."
+    apt_hint "sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install libnvidia-gl-${drv_major}:i386"
     note_fail
   fi
 }
@@ -202,26 +249,183 @@ check_gecko() {
   else warn "Gecko: not installed; version undetected. Wine will prompt to install it on first launch."; fi
 }
 
+is_debian_like() {
+  local id like
+  id="$(os_release_value ID 2>/dev/null || true)"
+  like="$(os_release_value ID_LIKE 2>/dev/null || true)"
+  [ "$id" = debian ] || [ "$id" = ubuntu ] || grep -qw debian <<<"$like"
+}
+
+apt_hint() {
+  is_debian_like || return 0
+  warn "  Ubuntu/Debian package hint: $*"
+}
+
 check_tools() {
-  local t miss=0
-  for t in curl; do command -v "$t" >/dev/null 2>&1 || { warn "Optional tool missing: $t (needed only to auto-download Gecko)"; miss=1; }; done
-  [ "$miss" = 0 ] && ok "Helper tools: present"
+  local missing=()
+  command -v curl >/dev/null 2>&1 || missing+=(curl)
+  command -v pgrep >/dev/null 2>&1 || missing+=(procps)
+  if [ "${#missing[@]}" -eq 0 ]; then
+    ok "Helper tools: curl and pgrep present"
+  else
+    warn "Helper tools: missing ${missing[*]}"
+    apt_hint "sudo apt install ${missing[*]}"
+    note_fail
+  fi
+}
+
+# --- Ubuntu GE-Proton / UMU fallback checks -----------------------------------
+
+os_release_value() {
+  local key="$1" line val
+  [ -r /etc/os-release ] || return 1
+  line="$(grep -E "^${key}=" /etc/os-release 2>/dev/null | head -1 || true)"
+  [ -n "$line" ] || return 1
+  val="${line#*=}"
+  val="${val%\"}"
+  val="${val#\"}"
+  printf '%s\n' "$val"
+}
+
+is_ubuntu_host() {
+  [ "$(os_release_value ID 2>/dev/null || true)" = ubuntu ]
+}
+
+wine_is_cachyos() {
+  have_wine && "$WINE" --version 2>/dev/null | grep -qi 'cachyos'
+}
+
+find_ge_proton11() {
+  local d
+  for d in \
+    "$HOME/.local/share/umu/compatibilitytools/GE-Proton11-1" \
+    "$HOME/.local/share/Steam/compatibilitytools.d/GE-Proton11-1" \
+    "$HOME/.steam/root/compatibilitytools.d/GE-Proton11-1" \
+    "$HOME/.steam/steam/compatibilitytools.d/GE-Proton11-1" \
+    /usr/local/share/umu/compatibilitytools/GE-Proton11-1 \
+    /usr/share/umu/compatibilitytools/GE-Proton11-1 \
+    /usr/local/share/steam/compatibilitytools.d/GE-Proton11-1 \
+    /usr/share/steam/compatibilitytools.d/GE-Proton11-1; do
+    [ -f "$d/proton" ] && [ -f "$d/toolmanifest.vdf" ] && { printf '%s\n' "$d"; return 0; }
+  done
+  return 1
+}
+
+apparmor_enabled() {
+  [ -r /sys/module/apparmor/parameters/enabled ] && grep -qi '^Y' /sys/module/apparmor/parameters/enabled
+}
+
+check_steamrt4_userns_profile() {
+  apparmor_enabled || return 0
+  [ -d "$HOME/.local/share/umu/steamrt4/pressure-vessel" ] || return 0
+
+  local profile=/etc/apparmor.d/umu-pressure-vessel
+  if [ ! -r "$profile" ]; then
+    warn "Ubuntu GE-Proton path: local steamrt4 runtime present, but $profile is missing."
+    warn "  If GE-Proton fails with 'bwrap: setting up uid map: Permission denied', add a userns AppArmor profile."
+    return
+  fi
+
+  if grep -q 'steamrt4/pressure-vessel/bin/pressure-vessel-wrap' "$profile" \
+     && grep -q 'steamrt4/pressure-vessel/libexec/steam-runtime-tools-0/srt-bwrap' "$profile"; then
+    ok "Ubuntu GE-Proton path: local steamrt4 AppArmor userns profile configured"
+  else
+    warn "Ubuntu GE-Proton path: $profile does not cover local steamrt4 pressure-vessel/srt-bwrap."
+    warn "  If GE-Proton fails with 'bwrap: setting up uid map: Permission denied', add steamrt4 entries."
+  fi
+}
+
+check_ubuntu_geproton() {
+  is_ubuntu_host || return 0
+
+  if wine_is_cachyos; then
+    ok "Ubuntu runtime fallback: selected Wine is wine-cachyos; GE-Proton11/umu not required"
+    return
+  fi
+
+  local umu ge
+  umu="$(command -v umu-run 2>/dev/null || true)"
+  ge="$(find_ge_proton11 || true)"
+
+  if [ -n "$umu" ] && "$umu" --version >/dev/null 2>&1; then
+    ok "Ubuntu GE-Proton path: umu-run works ($umu)"
+  elif [ -n "$umu" ]; then
+    warn "Ubuntu GE-Proton path: umu-run found but could not run '$umu --version'."
+    note_fail
+  else
+    warn "Ubuntu GE-Proton path: umu-run not found."
+    warn "  WineHQ wine-11.11 currently hits the DQXTitle startup crash on Ubuntu; install umu for the GE-Proton11 path."
+    note_fail
+  fi
+
+  if [ -n "$ge" ]; then
+    ok "Ubuntu GE-Proton path: GE-Proton11-1 found ($ge)"
+  else
+    warn "Ubuntu GE-Proton path: GE-Proton11-1 not found."
+    warn "  Install GE-Proton11-1 for the tested Ubuntu path; PROTON_USE_WOW64=1 is required when launching through umu."
+    note_fail
+  fi
+
+  check_steamrt4_userns_profile
+}
+
+recommended_ubuntu_protonpath() {
+  [ -n "$DQX_PROTONPATH" ] && { printf '%s\n' "$DQX_PROTONPATH"; return 0; }
+  find_ge_proton11
+}
+
+show_launch_advice() {
+  local ge
+  section "Launch path"
+  if is_ubuntu_host; then
+    ge="$(recommended_ubuntu_protonpath || true)"
+    if [ -n "$ge" ] && command -v "$DQX_UMU" >/dev/null 2>&1; then
+      ok "Recommended on Ubuntu: ./dqx.sh play-umu"
+      msg "Uses GE-Proton11 with PROTON_USE_WOW64=1 and no Steam app-id workaround."
+    elif wine_is_cachyos; then
+      ok "Recommended on Ubuntu with this runtime: ./dqx.sh play"
+    else
+      warn "Recommended on Ubuntu: install umu + GE-Proton11-1, then run './dqx.sh play-umu'."
+    fi
+  else
+    ok "Recommended on this distro: ./dqx.sh play"
+  fi
 }
 
 # --- commands ------------------------------------------------------------------
 
 cmd_doctor() {
   DOCTOR_OK=1
+  msg "Doctor checks the local machine only; it does not download or change anything."
+
+  section "Runtime"
   check_wine
+  check_ubuntu_geproton
+
+  section "Language and launcher UI"
   check_locale
   check_fonts
-  check_gstreamer
   check_gecko
+
+  section "Movies and graphics"
+  check_gstreamer
+  check_graphics
+
+  section "Helper tools"
   check_tools
+
+  section "Game install"
   if [ -e "$DQX_PREFIX/$GAME_REL/Boot/DQXBoot.exe" ]; then ok "Game: installed at $DQX_PREFIX"
-  else msg "Game: not installed yet (run 'setup' then 'install <Setup.exe>')"; fi
+  else msg "Game: not installed yet. Next: ./dqx.sh setup && ./dqx.sh install /path/to/Setup.exe"; fi
+
+  show_launch_advice
+
   echo
-  [ "$DOCTOR_OK" = 1 ] && ok "Prerequisites look good." || warn "Some prerequisites are missing (see above)."
+  if [ "$DOCTOR_OK" = 1 ]; then
+    ok "Doctor passed. You are ready for the recommended launch path above."
+  else
+    warn "Doctor found missing pieces. Fix the items marked '!!', then run './dqx.sh doctor' again."
+  fi
 }
 
 # Ensure the Gecko MSI is available so Wine can install it (system pkg, cache, or download).
@@ -335,11 +539,40 @@ cmd_install() {
   msg "The installer is Japanese-only; just click through and install to the DEFAULT location."
   ( cd "$(dirname "$setup")" && w "$setup" )
   if [ -e "$DQX_PREFIX/$GAME_REL/Boot/DQXBoot.exe" ]; then
-    ok "Base install detected. Next: ./dqx.sh play  (first run downloads/patches the client)."
+    ok "Base install detected. Next: ./dqx.sh doctor, then use the recommended play command."
   else
     warn "Did not find DQXBoot.exe afterward — did the installer use the default path?"
     warn "Expected: $DQX_PREFIX/$GAME_REL/Boot/DQXBoot.exe"
   fi
+}
+
+cmd_play_umu() {
+  local boot="$DQX_PREFIX/$GAME_REL/Boot"
+  [ -f "$boot/DQXBoot.exe" ] || die "Game not installed. Run setup + install first."
+
+  local umu ge
+  umu="$(command -v "$DQX_UMU" 2>/dev/null || true)"
+  [ -n "$umu" ] || die "umu-run not found. Install umu or set DQX_UMU=/path/to/umu-run."
+  ge="$(recommended_ubuntu_protonpath || true)"
+  [ -n "$ge" ] || die "GE-Proton11-1 not found. Install it or set DQX_PROTONPATH=/path/to/GE-Proton11-1."
+  [ -f "$ge/proton" ] || die "Invalid DQX_PROTONPATH (missing proton): $ge"
+
+  local -a inhibit=()
+  if [ "${DQX_INHIBIT:-1}" != 0 ]; then
+    command -v systemd-inhibit >/dev/null 2>&1 && inhibit+=(
+      systemd-inhibit --what=idle:sleep --who="Dragon Quest X"
+      --why="Gameplay (controller input does not reset the idle timer)")
+    command -v kde-inhibit >/dev/null 2>&1 && inhibit+=(kde-inhibit --power --screenSaver)
+  fi
+
+  msg "Launching DQX with GE-Proton11 via umu."
+  msg "Using PROTONPATH=$ge"
+  msg "Using PROTON_USE_WOW64=1 (required for the launcher -> DQXTitle movie handoff)."
+  ( cd "$boot" && \
+    "${inhibit[@]}" env \
+      PROTONPATH="$ge" PROTON_USE_WOW64=1 GAMEID="$DQX_UMU_GAMEID" \
+      WINEPREFIX="$DQX_PREFIX" LC_ALL="$DQX_LOCALE" \
+      "$umu" "$boot/DQXBoot.exe" )
 }
 
 cmd_play() {
@@ -353,6 +586,13 @@ cmd_play() {
   #                             logind idle lock alone doesn't reliably stop on KDE.
   # Both are nested, so each applies where present. Set DQX_INHIBIT=0 to disable.
   local -a inhibit=()
+  local -a movie_env=()
+  # Wine's WMReader can expose DQX WMV3 movies as compressed samples under
+  # new-WoW64, which DQX then hands to d3d9 as an unsupported WMV3 FourCC.
+  # This existing Wine app-compat key forces decoded samples so movies render.
+  if [ -n "$DQX_MOVIE_COMPAT_GAMEID" ]; then
+    movie_env+=(SteamGameId="$DQX_MOVIE_COMPAT_GAMEID")
+  fi
   if [ "${DQX_INHIBIT:-1}" != 0 ]; then
     command -v systemd-inhibit >/dev/null 2>&1 && inhibit+=(
       systemd-inhibit --what=idle:sleep --who="Dragon Quest X"
@@ -371,11 +611,13 @@ cmd_play() {
   # the game path are on our own wrapper's command line, and matching those would make
   # pgrep find this very process and loop forever. The parenthesized regex also can't
   # match its own literal text.
+  # shellcheck disable=SC2016 # Expand $WINE inside the child shell after env sets it.
   ( cd "$boot" && \
     "${inhibit[@]}" env \
+      "${movie_env[@]}" \
       WINEPREFIX="$DQX_PREFIX" WINEARCH=win64 LC_ALL="$DQX_LOCALE" \
       WINEDLLOVERRIDES="$DQX_DLLOVERRIDES" WINEPATH="$GAME_WIN_GAMEDIR" WINE="$WINE" \
-      sh -c '"$WINE" DQXBoot.exe; sleep 5; while pgrep -f "DQX(Launcher|Game|Title|Config|Updater)\.exe" >/dev/null 2>&1; do sleep 10; done' )
+      sh -c '"$WINE" DQXBoot.exe; sleep 5; while pgrep -fi "dqx(launcher|game|title|config|updater)\.exe" >/dev/null 2>&1; do sleep 10; done' )
 }
 
 case "${1:-}" in
@@ -383,7 +625,8 @@ case "${1:-}" in
   setup)   cmd_setup ;;
   install) shift; cmd_install "$@" ;;
   play)    cmd_play ;;
+  play-umu|play-ge) cmd_play_umu ;;
   ""|-h|--help|help)
-    sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "Unknown command: $1  (try: doctor | setup | install | play)" ;;
+    sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "Unknown command: $1  (try: doctor | setup | install | play | play-umu)" ;;
 esac
