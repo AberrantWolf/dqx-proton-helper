@@ -29,6 +29,9 @@ On Ubuntu 24.04 with NVIDIA 595, WineHQ Staging `wine-11.11` was verified using
 all worked through WineD3D and host GStreamer. No Proton, DXVK, or borrowed Steam
 app ID was active. The memory-projector FMV was not repeated during this Ubuntu test.
 
+The captured movie pipeline, runtime differences, and cross-platform diagnostic
+checklist are documented in [MOVIES.md](MOVIES.md).
+
 The hard requirement is **active new-WoW64 execution**, not merely the presence of a
 `wow64.dll` file:
 
