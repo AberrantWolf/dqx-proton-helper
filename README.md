@@ -190,6 +190,25 @@ You can customize some paths if needed. But the defaults are probably fine.
 | `DQX_PROTONPATH` | auto-detect `GE-Proton11-1` | Override GE-Proton path for `play-umu` |
 | `DQX_UMU_GAMEID` | `dqx` | UMU `GAMEID` for `play-umu`; not a Steam app ID |
 
+### High-DPI UI (4K and Retina)
+
+High-DPI mode works with DQX and is useful when the installer, launcher, or
+configuration tool is too small on a 4K display. On plain Wine, open
+`winecfg` for the DQX prefix and set the Graphics-tab screen resolution to
+192 DPI for 200% UI scaling:
+
+```sh
+WINEPREFIX="${DQX_PREFIX:-$HOME/Games/dqx-prefix}" "${WINE:-wine}" winecfg
+```
+
+On CrossOver Mac 26, enable **High Resolution Mode** in the bottle's Advanced
+Settings. Keep the metric-compatible Japanese font installed: a generic CJK
+fallback can make `DQXConfig.exe`'s buttons grow and overlap at either normal
+or high DPI. The CrossOver route does not require its old built-in Winetricks
+UI. The cause, tested configurations, Winetricks-free CrossOver font steps,
+registry alternative, and DPI checks are in
+[UI-SCALING.md](UI-SCALING.md).
+
 ## What you don't need
 
 - **Steam, Lutris, Proton, or umu.** Plain Wine is the verified default on both
