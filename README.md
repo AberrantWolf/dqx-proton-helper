@@ -138,7 +138,15 @@ some checks bolted on. Swap in your own paths.
    directory on Wine's exe search path — after login the launcher starts `DQXGame.exe` by
    bare name, and without that it can't find it (you get `ErrorCode = 2` and a bogus
    "your install is corrupted"):
+
+   The per-app registry value preserves the pre-launch H&S warning under X11. The bundled
+   helper adds child clipping only while the updater progress control is visible, then
+   removes it before the normal launcher takes over.
+
    ```sh
+   wine reg add 'HKCU\Software\Wine\AppDefaults\DQXLauncher.exe\X11 Driver' \
+     /v Managed /t REG_SZ /d N /f
+   wine /path/to/dqx-proton-helper/dqx-launcher-clip.exe &
    cd "$WINEPREFIX/drive_c/Program Files (x86)/SquareEnix/DRAGON QUEST X/Boot"
    LC_ALL=ja_JP.UTF-8 \
      WINEPATH='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game' \
@@ -218,9 +226,12 @@ You can customize some paths if needed. But the defaults are probably fine.
   `DQX_MOVIE_COMPAT_GAMEID=638160 ./dqx.sh play`. This borrows another game's downstream
   compatibility behavior, so it is deliberately disabled by default and is not needed by
   the verified WineHQ 11.11 path.
-- **Black rectangles** in the launcher are a cosmetic GDI redraw issue. It sucks, but I'm
-  fairly sure they don't have any effect on the game itself. It's just weirdness with Wine
-  versus how Windows apps can assume they work.
+- **A black H&S screen or black strip in the updater progress bar.** `./dqx.sh play` now
+  applies two narrowly scoped workarounds: only `DQXLauncher.exe` is unmanaged under X11,
+  and the bundled 3.5 KiB helper adds `WS_CLIPCHILDREN` only while the updater progress
+  control is visible. It removes the style before the normal launcher takes over, because
+  leaving it enabled breaks that UI. The helper is built from [`dqx-launcher-clip.c`](dqx-launcher-clip.c);
+  no compiler is needed to run the included executable.
 - If the launcher spawns a brief **"already running"** popup, you may need to reinstall
   your game. This happened when I was copying pre-installed assets between prefixes, and
   the only fix that worked was to completely reinstall the whole game in the prefix.
