@@ -45,6 +45,10 @@ set -euo pipefail
 : "${DQX_PROTONPATH:=}"
 : "${DQX_UMU_GAMEID:=dqx}"
 
+SCRIPT_FILE="$(readlink -f -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="${SCRIPT_FILE%/*}"
+LAUNCHER_CLIP_HELPER="$SCRIPT_DIR/dqx-launcher-clip.exe"
+
 GAME_REL="drive_c/Program Files (x86)/SquareEnix/DRAGON QUEST X"
 GAME_WIN_GAMEDIR='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game'
 # Disable Mono/.NET (DQX doesn't need it) so its install prompt never appears.
@@ -170,6 +174,14 @@ w() {
   WINEDLLOVERRIDES="$DQX_DLLOVERRIDES" "$WINE" "$@"
 }
 reg_add() { WINEDEBUG=-all w reg add "$@" >/dev/null 2>&1; }
+
+apply_launcher_x11_settings() {
+  # DQX paints its H&S warning before mapping the launcher HWND. Mutter clears
+  # that early paint when it later manages/maps the window; an unmanaged X11
+  # window preserves it. Keep this per-app rather than changing the whole prefix.
+  reg_add 'HKCU\Software\Wine\AppDefaults\DQXLauncher.exe\X11 Driver' \
+    /v Managed /t REG_SZ /d N /f
+}
 
 has_gecko_engine() { ls "$DQX_PREFIX"/drive_c/windows/*/gecko/*/wine_gecko/xul.dll >/dev/null 2>&1; }
 
@@ -666,12 +678,22 @@ cmd_play_umu() {
 
 cmd_play() {
   have_wine || die "Wine ('$WINE') not found."
-  local boot="$DQX_PREFIX/$GAME_REL/Boot" winearch
+  local boot="$DQX_PREFIX/$GAME_REL/Boot" winearch launcher_helper=""
   winearch="$(winearch_for_dqx)" \
     || die "Invalid DQX_WINEARCH='$DQX_WINEARCH' (expected auto, win64, or wow64)."
   wine_mode_is_new_wow64 \
     || die "Selected Wine/WINEARCH=$winearch does not activate new WoW64. Run './dqx.sh doctor'."
   [ -f "$boot/DQXBoot.exe" ] || die "Game not installed. Run setup + install first."
+  if ! apply_launcher_x11_settings; then
+    warn "Could not set the per-app unmanaged X11 workaround; the H&S warning may be black."
+  fi
+  if [ -f "$LAUNCHER_CLIP_HELPER" ]; then
+    launcher_helper="$LAUNCHER_CLIP_HELPER"
+  else
+    warn "Updater redraw helper is missing: $LAUNCHER_CLIP_HELPER"
+    warn "The updater still works, but moving its window may black out part of the progress bar."
+  fi
+
   # Keep the machine awake for the game's lifetime. Gamepad input does NOT reset the
   # idle timer, so without this the screen can blank/lock or the box can suspend mid-game.
   #   systemd-inhibit (logind): blocks auto-suspend + idle actions (portable).
@@ -695,6 +717,7 @@ cmd_play() {
     command -v kde-inhibit >/dev/null 2>&1 && inhibit+=(kde-inhibit --power --screenSaver)
   fi
   msg "Launching DQX with $("$WINE" --version 2>/dev/null), WINEARCH=$winearch."
+  msg "Launcher rendering workarounds: unmanaged H&S window; updater-only child clipping."
   msg "First run drops into the updater (downloads/patches the client) — let it finish."
   msg "Tip: a transient 'DQ-10009 / can't connect' right after the first boot update is harmless; rerun 'play'."
   # cd into Boot (DQXBoot.exe lives there); WINEPATH puts the Game dir on the exe
@@ -713,7 +736,19 @@ cmd_play() {
       "${movie_env[@]}" \
       WINEPREFIX="$DQX_PREFIX" WINEARCH="$winearch" LC_ALL="$DQX_LOCALE" \
       WINEDLLOVERRIDES="$DQX_DLLOVERRIDES" WINEPATH="$GAME_WIN_GAMEDIR" WINE="$WINE" \
-      sh -c '"$WINE" DQXBoot.exe; sleep 5; while pgrep -fi "dqx(launcher|game|title|config|updater)\.exe" >/dev/null 2>&1; do sleep 10; done' )
+      DQX_LAUNCHER_CLIP_HELPER="$launcher_helper" \
+      sh -c '
+        if [ -n "$DQX_LAUNCHER_CLIP_HELPER" ]; then
+          "$WINE" "$DQX_LAUNCHER_CLIP_HELPER" &
+          launcher_clip_pid=$!
+        fi
+        "$WINE" DQXBoot.exe
+        sleep 5
+        while pgrep -fi "dqx(launcher|game|title|config|updater)\.exe" >/dev/null 2>&1; do sleep 10; done
+        if [ -n "${launcher_clip_pid:-}" ]; then
+          wait "$launcher_clip_pid" 2>/dev/null || true
+        fi
+      ' )
 }
 
 case "${1:-}" in
