@@ -6,8 +6,9 @@
 # installer into it, and launches the game with the handful of non-obvious settings
 # that make it work. It does NOT download or provide the game itself.
 #
-# Default path: plain Wine, no Steam or Lutris. Ubuntu also has a tested
-# GE-Proton11/umu fallback because WineHQ currently trips over DQXTitle startup.
+# Default path: plain Wine, no Steam or Lutris. GE-Proton11/umu remains an
+# optional fallback. WineHQ 11 multilib builds must run DQX with WINEARCH=wow64;
+# the helper detects that layout and selects the mode automatically.
 # The game is a 32-bit DirectX 9 client; it runs through Wine's new-WoW64 mode
 # and renders via wined3d (D3D9 -> OpenGL).
 #
@@ -24,10 +25,12 @@
 #   DQX_PREFIX   Prefix location          (default: ~/Games/dqx-prefix)
 #   WINE         Wine binary to use        (default: wine)
 #   DQX_LOCALE   Japanese locale to use    (default: ja_JP.utf8)
+#   DQX_WINEARCH Wine execution mode        (default: auto; win64 or wow64 override)
 #   DQX_JP_FONT  Override: substitute the JP UI fonts with this host family instead of
 #                installing IPAMona via winetricks (default: IPAMona if winetricks present)
 #   DQX_INHIBIT  1=hold an idle/sleep lock while playing (default), 0=don't
-#   DQX_MOVIE_COMPAT_GAMEID  Wine WMReader movie workaround (default: 638160; empty disables)
+#   DQX_MOVIE_COMPAT_GAMEID  Opt-in Wine WMReader workaround (default: disabled;
+#                            use 638160 for affected wine-cachyos 10.0 builds)
 #   DQX_UMU      umu-run binary for play-umu (default: umu-run)
 #   DQX_PROTONPATH  GE-Proton path for play-umu (default: auto-detect GE-Proton11-1)
 #   DQX_UMU_GAMEID  UMU GAMEID for play-umu (default: dqx; deliberately no Steam app id)
@@ -36,7 +39,8 @@ set -euo pipefail
 : "${DQX_PREFIX:=$HOME/Games/dqx-prefix}"
 : "${WINE:=wine}"
 : "${DQX_LOCALE:=ja_JP.utf8}"
-: "${DQX_MOVIE_COMPAT_GAMEID:=638160}"
+: "${DQX_WINEARCH:=auto}"
+: "${DQX_MOVIE_COMPAT_GAMEID:=}"
 : "${DQX_UMU:=umu-run}"
 : "${DQX_PROTONPATH:=}"
 : "${DQX_UMU_GAMEID:=dqx}"
@@ -70,27 +74,75 @@ wine_version_parts() {
   "$WINE" --version 2>/dev/null | sed -nE 's/^wine-([0-9]+)\.([0-9]+).*/\1 \2/p'
 }
 
-# Candidate Wine DLL directories (for capability/Gecko-version probing).
+# Candidate DLL directories belonging to the selected Wine installation.
 wine_dll_dirs() {
   local b root d
   b="$(command -v "$WINE" 2>/dev/null)" || return 0
   b="$(readlink -f "$b" 2>/dev/null || printf '%s' "$b")"
   root="${b%/bin/*}"
-  for d in "$root"/lib/wine "$root"/lib64/wine "$root"/lib/*/wine \
-           /usr/lib/wine /usr/lib64/wine /usr/lib/*/wine /opt/wine*/lib*/wine; do
+  for d in "$root"/lib/wine "$root"/lib64/wine "$root"/lib/*/wine; do
     [ -d "$d" ] && printf '%s\n' "$d"
   done 2>/dev/null | sort -u
 }
 
-# True if this Wine ships the new-WoW64 thunk DLLs (lets a 64-bit prefix run the
-# 32-bit DQX client without a 32-bit Unix Wine).
-is_new_wow64() {
+# Capability is separate from selection: a multilib Wine 11 installation can
+# ship both old and new WoW64, and WINEARCH decides which one is active.
+wine_has_new_wow64() {
   local d
   for d in $(wine_dll_dirs); do
     [ -f "$d/x86_64-windows/wow64.dll" ] && return 0
     [ -f "$d/wow64.dll" ] && return 0
   done
   return 1
+}
+
+wine_has_i386_unix() {
+  local d
+  for d in $(wine_dll_dirs); do
+    [ -d "$d/i386-unix" ] && return 0
+  done
+  return 1
+}
+
+wine_major_version() {
+  local parts
+  parts="$(wine_version_parts)"
+  [ -n "$parts" ] || return 1
+  printf '%s\n' "${parts%% *}"
+}
+
+# Pure new-WoW64 builds have no i386 Unix loader, so a normal win64 prefix uses
+# new WoW64 automatically. Dual/multilib Wine 11 builds default to old WoW64 and
+# must be forced into the tested path with WINEARCH=wow64.
+winearch_for_dqx() {
+  local major
+  case "$DQX_WINEARCH" in
+    auto)
+      if wine_has_i386_unix; then
+        major="$(wine_major_version 2>/dev/null || true)"
+        if wine_has_new_wow64 && [ "${major:-0}" -ge 11 ] 2>/dev/null; then
+          printf '%s\n' wow64
+        else
+          printf '%s\n' win64
+        fi
+      else
+        printf '%s\n' win64
+      fi
+      ;;
+    win64|wow64) printf '%s\n' "$DQX_WINEARCH" ;;
+    *) return 1 ;;
+  esac
+}
+
+wine_mode_is_new_wow64() {
+  local winearch
+  winearch="$(winearch_for_dqx 2>/dev/null || true)"
+  [ -n "$winearch" ] && wine_has_new_wow64 || return 1
+  if wine_has_i386_unix; then
+    [ "$winearch" = wow64 ]
+  else
+    return 0
+  fi
 }
 
 # Best-effort: the Wine-Gecko version this build expects (mshtml.dll embeds it).
@@ -109,7 +161,12 @@ gecko_version() {
 # --- prefix-scoped Wine wrappers -----------------------------------------------
 
 w() {
-  WINEPREFIX="$DQX_PREFIX" WINEARCH=win64 LC_ALL="$DQX_LOCALE" \
+  local winearch
+  winearch="$(winearch_for_dqx)" \
+    || die "Invalid DQX_WINEARCH='$DQX_WINEARCH' (expected auto, win64, or wow64)."
+  wine_mode_is_new_wow64 \
+    || die "Selected Wine/WINEARCH=$winearch does not activate new WoW64. Run './dqx.sh doctor'."
+  WINEPREFIX="$DQX_PREFIX" WINEARCH="$winearch" LC_ALL="$DQX_LOCALE" \
   WINEDLLOVERRIDES="$DQX_DLLOVERRIDES" "$WINE" "$@"
 }
 reg_add() { WINEDEBUG=-all w reg add "$@" >/dev/null 2>&1; }
@@ -136,31 +193,62 @@ detect_jp_font() {
 # --- prerequisite checks -------------------------------------------------------
 
 DOCTOR_OK=1
+PLAIN_WINE_OK=1
+GE_FALLBACK_OK=0
 note_fail() { DOCTOR_OK=0; }
 
 check_wine() {
+  PLAIN_WINE_OK=1
   if ! have_wine; then
-    warn "Wine: '$WINE' not found. Install Wine (>= 10; 11.x tested) or set WINE=/path/to/wine."
-    apt_hint "install WineHQ devel/staging, or use './dqx.sh play-umu' with GE-Proton11 on Ubuntu"
-    note_fail; return
+    warn "Wine: '$WINE' not found. Install Wine 11.11+ or set WINE=/path/to/wine."
+    apt_hint "install WineHQ devel/staging; GE-Proton11 via './dqx.sh play-umu' remains an optional fallback"
+    PLAIN_WINE_OK=0
+    return
   fi
-  local parts maj min ver
+
+  local parts maj min ver winearch
   ver="$("$WINE" --version 2>/dev/null || true)"
+  winearch="$(winearch_for_dqx 2>/dev/null || true)"
+  if [ -z "$winearch" ]; then
+    warn "Wine mode: invalid DQX_WINEARCH='$DQX_WINEARCH' (expected auto, win64, or wow64)."
+    PLAIN_WINE_OK=0
+    return
+  fi
+
   parts="$(wine_version_parts)"
   if [ -z "$parts" ]; then
     warn "Wine: found '$WINE' but could not parse its version ($ver)."
   else
     read -r maj min <<<"$parts"
     if [ "$maj" -gt 11 ] 2>/dev/null || { [ "$maj" -eq 11 ] 2>/dev/null && [ "$min" -ge 11 ] 2>/dev/null; }; then
-      ok "Wine: $ver (new enough; known-good baseline is wine-11.11 on CachyOS)"
+      ok "Wine: $ver (Wine 11.11 is verified on CachyOS and Ubuntu 24.04)"
     elif [ "$maj" -eq 11 ] 2>/dev/null; then
-      warn "Wine: $ver is Wine 11, but older than the known-good wine-11.11 baseline."
-      warn "  If title movies crash, try Wine devel/staging or another Wine build before chasing codecs."
-    elif [ "$maj" -ge 10 ] 2>/dev/null; then ok "Wine: $ver (>= 10, should work but older than tested wine-11.11)"
-    else warn "Wine: $ver is older than 10 — new-WoW64 may be immature; untested. Upgrade recommended."; fi
+      warn "Wine: $ver is older than the verified Wine 11.11 baseline."
+    elif [ "$maj" -ge 10 ] 2>/dev/null; then
+      warn "Wine: $ver is older than the primary baseline; only selected downstream Wine 10 builds were tested."
+    else
+      warn "Wine: $ver is older than 10 and is unsupported by this helper."
+      PLAIN_WINE_OK=0
+    fi
   fi
-  if is_new_wow64; then ok "Wine type: new-WoW64 build (can run the 32-bit client in a 64-bit prefix)"
-  else warn "Wine type: could not confirm new-WoW64 (no wow64.dll found). Plain multilib Wine is untested with DQX."; fi
+
+  if ! wine_has_new_wow64; then
+    warn "Wine layout: new-WoW64 capability not found in the selected Wine installation."
+    PLAIN_WINE_OK=0
+    return
+  fi
+
+  if wine_has_i386_unix; then
+    if [ "$winearch" = wow64 ]; then
+      ok "Wine layout: multilib/dual WoW64; active DQX mode is new WoW64 (WINEARCH=wow64)"
+    else
+      warn "Wine layout: multilib/dual WoW64, but WINEARCH=$winearch selects old WoW64."
+      warn "  Use DQX_WINEARCH=auto (recommended) or DQX_WINEARCH=wow64."
+      PLAIN_WINE_OK=0
+    fi
+  else
+    ok "Wine layout: pure new-WoW64; active DQX prefix mode is WINEARCH=$winearch"
+  fi
 }
 
 check_locale() {
@@ -220,22 +308,12 @@ check_gstreamer() {
 
 check_graphics() {
   command -v nvidia-smi >/dev/null 2>&1 || return 0
-  command -v dpkg-query >/dev/null 2>&1 || return 0
 
-  local drv_major installed
-  drv_major="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | sed -nE '1{s/^([0-9]+).*/\1/p;}')"
-  [ -n "$drv_major" ] || return 0
+  local driver
+  driver="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)"
+  [ -n "$driver" ] || return 0
 
-  installed="$(dpkg-query -W -f='${binary:Package}\n' 'libnvidia-gl-*:i386' 2>/dev/null \
-    | grep -E "^libnvidia-gl-${drv_major}(-server)?:i386$" | head -1 || true)"
-  if [ -n "$installed" ]; then
-    ok "NVIDIA 32-bit OpenGL: $installed installed"
-  else
-    warn "NVIDIA 32-bit OpenGL: matching libnvidia-gl-${drv_major}:i386 package not found."
-    warn "  32-bit D3D9/wined3d can fail to create a GL context without the matching i386 NVIDIA GL package."
-    apt_hint "sudo dpkg --add-architecture i386 && sudo apt update && sudo apt install libnvidia-gl-${drv_major}:i386"
-    note_fail
-  fi
+  ok "NVIDIA driver: $driver (new WoW64 uses the 64-bit host OpenGL stack)"
 }
 
 check_gecko() {
@@ -336,37 +414,30 @@ check_steamrt4_userns_profile() {
 }
 
 check_ubuntu_geproton() {
+  GE_FALLBACK_OK=0
   is_ubuntu_host || return 0
 
-  if wine_is_cachyos; then
-    ok "Ubuntu runtime fallback: selected Wine is wine-cachyos; GE-Proton11/umu not required"
+  local umu ge
+  umu="$(command -v "$DQX_UMU" 2>/dev/null || true)"
+  ge="$(recommended_ubuntu_protonpath || true)"
+
+  if [ -n "$umu" ] && "$umu" --version >/dev/null 2>&1 \
+     && [ -n "$ge" ] && [ -f "$ge/proton" ]; then
+    GE_FALLBACK_OK=1
+    ok "Optional fallback: GE-Proton11-1 via umu is available"
+    check_steamrt4_userns_profile
     return
   fi
 
-  local umu ge
-  umu="$(command -v umu-run 2>/dev/null || true)"
-  ge="$(find_ge_proton11 || true)"
-
-  if [ -n "$umu" ] && "$umu" --version >/dev/null 2>&1; then
-    ok "Ubuntu GE-Proton path: umu-run works ($umu)"
-  elif [ -n "$umu" ]; then
-    warn "Ubuntu GE-Proton path: umu-run found but could not run '$umu --version'."
-    note_fail
-  else
-    warn "Ubuntu GE-Proton path: umu-run not found."
-    warn "  WineHQ wine-11.11 currently hits the DQXTitle startup crash on Ubuntu; install umu for the GE-Proton11 path."
-    note_fail
+  msg "Optional fallback: GE-Proton11-1/umu is not fully available (plain Wine is preferred)."
+  if [ -n "$umu" ] && ! "$umu" --version >/dev/null 2>&1; then
+    warn "  '$DQX_UMU --version' failed."
+  elif [ -z "$umu" ]; then
+    msg "  umu-run not found."
   fi
-
-  if [ -n "$ge" ]; then
-    ok "Ubuntu GE-Proton path: GE-Proton11-1 found ($ge)"
-  else
-    warn "Ubuntu GE-Proton path: GE-Proton11-1 not found."
-    warn "  Install GE-Proton11-1 for the tested Ubuntu path; PROTON_USE_WOW64=1 is required when launching through umu."
-    note_fail
+  if [ -z "$ge" ] || [ ! -f "$ge/proton" ]; then
+    msg "  GE-Proton11-1 not found."
   fi
-
-  check_steamrt4_userns_profile
 }
 
 recommended_ubuntu_protonpath() {
@@ -375,20 +446,20 @@ recommended_ubuntu_protonpath() {
 }
 
 show_launch_advice() {
-  local ge
+  local winearch
   section "Launch path"
-  if is_ubuntu_host; then
-    ge="$(recommended_ubuntu_protonpath || true)"
-    if [ -n "$ge" ] && command -v "$DQX_UMU" >/dev/null 2>&1; then
-      ok "Recommended on Ubuntu: ./dqx.sh play-umu"
-      msg "Uses GE-Proton11 with PROTON_USE_WOW64=1 and no Steam app-id workaround."
-    elif wine_is_cachyos; then
-      ok "Recommended on Ubuntu with this runtime: ./dqx.sh play"
-    else
-      warn "Recommended on Ubuntu: install umu + GE-Proton11-1, then run './dqx.sh play-umu'."
+  if [ "$PLAIN_WINE_OK" = 1 ]; then
+    winearch="$(winearch_for_dqx)"
+    ok "Recommended: ./dqx.sh play"
+    msg "Uses plain $("$WINE" --version 2>/dev/null) with WINEARCH=$winearch."
+    if [ "$GE_FALLBACK_OK" = 1 ]; then
+      msg "Fallback available: ./dqx.sh play-umu (GE-Proton11-1 via umu)."
     fi
+  elif [ "$GE_FALLBACK_OK" = 1 ]; then
+    ok "Plain Wine is not ready; use fallback: ./dqx.sh play-umu"
+    msg "Uses GE-Proton11-1 with PROTON_USE_WOW64=1."
   else
-    ok "Recommended on this distro: ./dqx.sh play"
+    warn "No verified launch path is ready. Fix the Wine mode above or install the GE-Proton11/umu fallback."
   fi
 }
 
@@ -396,11 +467,16 @@ show_launch_advice() {
 
 cmd_doctor() {
   DOCTOR_OK=1
+  PLAIN_WINE_OK=1
+  GE_FALLBACK_OK=0
   msg "Doctor checks the local machine only; it does not download or change anything."
 
   section "Runtime"
   check_wine
   check_ubuntu_geproton
+  if [ "$PLAIN_WINE_OK" != 1 ] && [ "$GE_FALLBACK_OK" != 1 ]; then
+    note_fail
+  fi
 
   section "Language and launcher UI"
   check_locale
@@ -408,8 +484,14 @@ cmd_doctor() {
   check_gecko
 
   section "Movies and graphics"
-  check_gstreamer
-  check_graphics
+  if [ "$PLAIN_WINE_OK" = 1 ]; then
+    check_gstreamer
+    check_graphics
+  elif [ "$GE_FALLBACK_OK" = 1 ]; then
+    ok "Host GStreamer: not required by GE-Proton11-1 (it uses Wine DMO/FFmpeg)"
+  else
+    msg "Movie/graphics checks skipped until a runtime is ready."
+  fi
 
   section "Helper tools"
   check_tools
@@ -488,7 +570,9 @@ apply_fonts() {
     # The verb aliases MS Gothic/PGothic/UI Gothic/Mincho/PMincho (+ JP-named variants).
     # Once IPAMona is a real font in the prefix, Wine's glyph fallback covers the other
     # font names (Tahoma, MS Sans Serif, MS Shell Dlg, ...), so no extra aliases are needed.
-    if WINEPREFIX="$DQX_PREFIX" WINEARCH=win64 WINEDEBUG=-all \
+    # Winetricks currently recognizes only win32/win64. The prefix itself remains
+    # 64-bit; DQX is launched later with the independently selected new-WoW64 mode.
+    if WINE="$WINE" WINEPREFIX="$DQX_PREFIX" WINEARCH=win64 WINEDEBUG=-all \
          winetricks -q fakejapanese_ipamona >/dev/null 2>&1 && ipamona_present; then
       ok "Japanese fonts: IPAMona installed and aliased."
       return
@@ -513,13 +597,18 @@ apply_tls() {
 
 cmd_setup() {
   have_wine || die "Wine ('$WINE') not found. Run './dqx.sh doctor'."
+  local winearch
+  winearch="$(winearch_for_dqx)" \
+    || die "Invalid DQX_WINEARCH='$DQX_WINEARCH' (expected auto, win64, or wow64)."
+  wine_mode_is_new_wow64 \
+    || die "Selected Wine/WINEARCH=$winearch does not activate new WoW64. Run './dqx.sh doctor'."
   if [ -e "$DQX_PREFIX/drive_c" ]; then
     warn "Prefix already exists: $DQX_PREFIX"
     warn "Delete it (rm -rf \"$DQX_PREFIX\") or set DQX_PREFIX= to use another location."
     return 0
   fi
   mkdir -p "$DQX_PREFIX"
-  msg "Creating a clean 64-bit Wine prefix at $DQX_PREFIX (this can take a minute)..."
+  msg "Creating a clean 64-bit Wine prefix at $DQX_PREFIX with WINEARCH=$winearch (this can take a minute)..."
   WINEDEBUG=-all w wineboot --init
   [ -d "$DQX_PREFIX/drive_c" ] || die "Prefix creation failed."
   install_gecko
@@ -577,7 +666,11 @@ cmd_play_umu() {
 
 cmd_play() {
   have_wine || die "Wine ('$WINE') not found."
-  local boot="$DQX_PREFIX/$GAME_REL/Boot"
+  local boot="$DQX_PREFIX/$GAME_REL/Boot" winearch
+  winearch="$(winearch_for_dqx)" \
+    || die "Invalid DQX_WINEARCH='$DQX_WINEARCH' (expected auto, win64, or wow64)."
+  wine_mode_is_new_wow64 \
+    || die "Selected Wine/WINEARCH=$winearch does not activate new WoW64. Run './dqx.sh doctor'."
   [ -f "$boot/DQXBoot.exe" ] || die "Game not installed. Run setup + install first."
   # Keep the machine awake for the game's lifetime. Gamepad input does NOT reset the
   # idle timer, so without this the screen can blank/lock or the box can suspend mid-game.
@@ -587,11 +680,13 @@ cmd_play() {
   # Both are nested, so each applies where present. Set DQX_INHIBIT=0 to disable.
   local -a inhibit=()
   local -a movie_env=()
-  # Wine's WMReader can expose DQX WMV3 movies as compressed samples under
-  # new-WoW64, which DQX then hands to d3d9 as an unsupported WMV3 FourCC.
-  # This existing Wine app-compat key forces decoded samples so movies render.
+  # This borrows a Proton/wine-cachyos app-compat ID that forces decoded BGRx
+  # samples. WineHQ 11.11 does not need it; keep it opt-in for affected builds.
   if [ -n "$DQX_MOVIE_COMPAT_GAMEID" ]; then
+    warn "Enabling opt-in WMReader workaround: SteamGameId=$DQX_MOVIE_COMPAT_GAMEID"
     movie_env+=(SteamGameId="$DQX_MOVIE_COMPAT_GAMEID")
+  elif wine_is_cachyos; then
+    msg "Movie workaround is disabled; if wine-cachyos 10.0 shows a blank WMV window, retry with DQX_MOVIE_COMPAT_GAMEID=638160."
   fi
   if [ "${DQX_INHIBIT:-1}" != 0 ]; then
     command -v systemd-inhibit >/dev/null 2>&1 && inhibit+=(
@@ -599,7 +694,8 @@ cmd_play() {
       --why="Gameplay (controller input does not reset the idle timer)")
     command -v kde-inhibit >/dev/null 2>&1 && inhibit+=(kde-inhibit --power --screenSaver)
   fi
-  msg "Launching DQX. First run drops into the updater (downloads/patches the client) — let it finish."
+  msg "Launching DQX with $("$WINE" --version 2>/dev/null), WINEARCH=$winearch."
+  msg "First run drops into the updater (downloads/patches the client) — let it finish."
   msg "Tip: a transient 'DQ-10009 / can't connect' right after the first boot update is harmless; rerun 'play'."
   # cd into Boot (DQXBoot.exe lives there); WINEPATH puts the Game dir on the exe
   # search path so the launcher can spawn DQXGame.exe by bare name after login.
@@ -615,7 +711,7 @@ cmd_play() {
   ( cd "$boot" && \
     "${inhibit[@]}" env \
       "${movie_env[@]}" \
-      WINEPREFIX="$DQX_PREFIX" WINEARCH=win64 LC_ALL="$DQX_LOCALE" \
+      WINEPREFIX="$DQX_PREFIX" WINEARCH="$winearch" LC_ALL="$DQX_LOCALE" \
       WINEDLLOVERRIDES="$DQX_DLLOVERRIDES" WINEPATH="$GAME_WIN_GAMEDIR" WINE="$WINE" \
       sh -c '"$WINE" DQXBoot.exe; sleep 5; while pgrep -fi "dqx(launcher|game|title|config|updater)\.exe" >/dev/null 2>&1; do sleep 10; done' )
 }
@@ -627,6 +723,6 @@ case "${1:-}" in
   play)    cmd_play ;;
   play-umu|play-ge) cmd_play_umu ;;
   ""|-h|--help|help)
-    sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//' ;;
+    sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d; s/^# \{0,1\}//' ;;
   *) die "Unknown command: $1  (try: doctor | setup | install | play | play-umu)" ;;
 esac
