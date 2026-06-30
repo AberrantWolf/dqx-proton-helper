@@ -250,7 +250,8 @@ registry alternative, and DPI checks are in
   and the bundled 3.5 KiB helper adds `WS_CLIPCHILDREN` only while the updater progress
   control is visible. It removes the style before the normal launcher takes over, because
   leaving it enabled breaks that UI. The helper is built from [`dqx-launcher-clip.c`](dqx-launcher-clip.c);
-  no compiler is needed to run the included executable.
+  no compiler is needed to run the included executable. A redistributable standalone
+  reproducer for the H&S first-map failure is in [`repro/first-map`](repro/first-map/README.md).
 - If the launcher spawns a brief **"already running"** popup, you may need to reinstall
   your game. This happened when I was copying pre-installed assets between prefixes, and
   the only fix that worked was to completely reinstall the whole game in the prefix.
