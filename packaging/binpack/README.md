@@ -44,14 +44,14 @@ Maintainer flow:
 User flow:
 
 ```sh
-./macos-crossover.sh fetch-binpack
+./dqx.sh fetch-binpack
 ```
 
 Manual/offline user flow:
 
 ```sh
 DQX_BINPACK_SHA256=<zip sha256 from release notes> \
-  ./macos-crossover.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack.zip
+  ./dqx.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack.zip
 ```
 
 The helper extracts the pack into `vendor/binpack/`, refuses full CrossOver

@@ -5,7 +5,7 @@ stock CrossOver 26.2 module into a verified patched module.
 
 The intended user flow is:
 
-1. `macos-crossover.sh` verifies the stock module hash.
+1. `./dqx.sh` verifies the stock module hash.
 2. macOS built-in `/usr/bin/bspatch` applies the matching delta to a temporary
    file.
 3. The helper verifies the patched output hash.

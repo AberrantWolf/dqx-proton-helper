@@ -2,7 +2,7 @@
 
 This directory is a local-only drop zone for patched CrossOver modules.
 
-`macos-crossover.sh patches` looks here by default for:
+`./dqx.sh patches` on macOS/CrossOver looks here by default for:
 
 - `win32u.so`
 - `winegstreamer.dll`

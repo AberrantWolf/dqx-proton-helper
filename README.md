@@ -7,11 +7,11 @@ non-obvious settings needed for gameplay, the launcher's HTML UI, and FMV playba
 Plain Wine 11.11 is verified on CachyOS and Ubuntu 24.04; `GE-Proton11-1` through
 `umu` remains an optional fallback.
 
-There is also an early **Apple Silicon Mac / CrossOver** helper:
-`./macos-crossover.sh`. That path is separate because CrossOver setup is bottle- and
-app-bundle-oriented rather than plain-prefix-oriented. The Mac helper does not require
-winetricks; it downloads the whole IPAMona font package from FreeBSD's ports distcache,
-verifies the pinned SHA-256, and installs the local user fonts itself.
+The same `./dqx.sh` entrypoint also supports the early **Apple Silicon Mac / CrossOver**
+path. Internally that delegates to a separate platform helper because CrossOver setup is
+bottle- and app-bundle-oriented rather than plain-prefix-oriented. The Mac path does not
+require winetricks; it downloads the whole IPAMona font package from FreeBSD's ports
+distcache, verifies the pinned SHA-256, and installs the local user fonts itself.
 
 > Yeah, the repo's called `dqx-proton-helper`. It started out using Proton through
 > umu, and the name stuck. The default path is now plain Wine on both tested systems.
@@ -220,11 +220,11 @@ registry alternative, and DPI checks are in
 For the current CrossOver path, use:
 
 ```sh
-./macos-crossover.sh doctor
-./macos-crossover.sh fetch-binpack
-./macos-crossover.sh setup
-./macos-crossover.sh install /path/to/Setup.exe
-./macos-crossover.sh play
+./dqx.sh doctor
+./dqx.sh fetch-binpack
+./dqx.sh setup
+./dqx.sh install /path/to/Setup.exe
+./dqx.sh play
 ```
 
 The binpack step is optional but recommended for normal users: it downloads the pinned
@@ -232,7 +232,7 @@ The binpack step is optional but recommended for normal users: it downloads the 
 verifies its SHA-256, and installs small generated helper executables without requiring
 Xcode, Homebrew, MinGW, or a local Wine/CrossOver build tree. For offline/manual installs,
 download the zip yourself and run
-`./macos-crossover.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
+`./dqx.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
 
 The helper refreshes the measured-good IPAMona/Ume font aliases, writes durable
 CrossOver bottle environment variables for `WINEPATH` and GStreamer, runs the installer

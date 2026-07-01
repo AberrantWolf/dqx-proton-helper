@@ -1,7 +1,7 @@
 # DQX on macOS (Apple Silicon, CrossOver)
 
 Running the Japanese DQX client on Apple Silicon through CrossOver. This is now
-scripted by `./macos-crossover.sh` for the parts we can safely automate: bottle setup,
+scripted by `./dqx.sh` for the parts we can safely automate: bottle setup,
 IPAMona font download/install, font aliases, installer launch, durable GStreamer/WINEPATH
 configuration, launch, and hash verification of the known patched modules. Anything marked
 *(unverified)* is a working theory, not fact.
@@ -9,11 +9,11 @@ configuration, launch, and hash verification of the known patched modules. Anyth
 Quick path:
 
 ```sh
-./macos-crossover.sh doctor
-./macos-crossover.sh fetch-binpack
-./macos-crossover.sh setup
-./macos-crossover.sh install /path/to/Setup.exe
-./macos-crossover.sh play
+./dqx.sh doctor
+./dqx.sh fetch-binpack
+./dqx.sh setup
+./dqx.sh install /path/to/Setup.exe
+./dqx.sh play
 ```
 
 The `fetch-binpack` step is the no-build-environment path for normal users. It downloads
@@ -23,7 +23,7 @@ verifies SHA-256
 `794dbaca3e50cc6b52ecfbc13d129641b86f29026d7c1326d1494c40095fbc01`, and unpacks it into
 `vendor/binpack/`, where the macOS helper looks for small generated helper executables such
 as `bin/dqx-launcher-clip.exe`. For offline/manual installs, download the zip yourself and
-run `./macos-crossover.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
+run `./dqx.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
 
 ## Stack
 
@@ -139,7 +139,7 @@ has it upstream).
   from CrossOver 26.2 Wine source with the same framework rpaths. The verified live,
   ad-hoc-signed source-built module hash is
   `8680c71a1991d51eebabe3132e127557877e7e35c6d0420ca767276c0b5250ad`.
-- **Durability caveat:** a CrossOver update overwrites these modules. `macos-crossover.sh`
+- **Durability caveat:** a CrossOver update overwrites these modules. `./dqx.sh`
   can verify hashes and can copy locally supplied patch artifacts from
   `patches/crossover-26.2/artifacts/`, but this repository must not redistribute CodeWeavers
   binaries.
@@ -207,7 +207,7 @@ Previous findings that still seem useful:
   characters on screen, persistent, random per-frame. Removing the MVK arg-buffers env var
   (above) didn't fix it. Working theory *(unverified)*: dynamic vertex-buffer / submission
   sync under load. Next experiment, not yet applied: `dxgi.maxFrameLatency = 1`.
-- **Make the CrossOver patches distributable.** `macos-crossover.sh` can apply local patched
+- **Make the CrossOver patches distributable.** `./dqx.sh` can apply local patched
   module artifacts by hash, but the repo cannot ship proprietary CodeWeavers binaries. Need
   decide whether to ship source patches/build instructions, generate binary patches from
   user-owned originals, or file/land CrossOver fixes first.
@@ -234,7 +234,7 @@ Recommended maintainer flow:
 1. Install the new CrossOver into a separate app bundle first, for example
    `/Applications/CrossOver-26.3.app`, and keep the last known-good app around.
 2. Run a completely stock smoke test with a fresh or copied test bottle:
-   `./macos-crossover.sh doctor`, `setup`, `install`, and `play` with `CX_APP` pointed at
+   `./dqx.sh doctor`, `setup`, `install`, and `play` with `CX_APP` pointed at
    the new app bundle.
 3. Verify the three fixes independently:
    - Launcher startup: DQXBoot splash has no oversized white border, H&S appears, launcher
@@ -252,7 +252,7 @@ Recommended maintainer flow:
    `patches/crossover-26.2/`; old users still need the old hashes.
 7. Generate new binary deltas only from the exact verified stock modules for that CrossOver
    version, and publish them only in a versioned optional binpack release asset.
-8. Update `macos-crossover.sh` only after the new version is verified. Ideally it should
+8. Update the macOS CrossOver platform module only after the new version is verified. Ideally it should
    select patch metadata by detected CrossOver build rather than letting a 26.2 delta apply
    to anything else.
 
@@ -262,7 +262,7 @@ quietly widening a workaround.
 
 ## Plan
 
-Sequencing: (1) harden `macos-crossover.sh` into a user-facing setup flow; (2) replace local
+Sequencing: (1) harden the macOS CrossOver path into a user-facing setup flow; (2) replace local
 binary artifacts with source-patch/build or upstream CrossOver fixes; (3) keep testing
 graphics/performance regressions from the clean minimal baseline. Plus: report the
 `wma_decoder` `dwStatus` bug to CodeWeavers so the local patch is not needed long-term.
