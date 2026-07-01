@@ -1,7 +1,8 @@
 # Binary Deltas
 
 This directory is reserved for `bsdiff` patch files that transform a verified
-stock CrossOver 26.2 module into a verified patched module.
+stock CrossOver 26.2 module into a verified patched module. Generated deltas are
+published through the macOS/CrossOver patch binpack, not committed here.
 
 The intended user flow is:
 

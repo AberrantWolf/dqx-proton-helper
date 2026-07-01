@@ -30,7 +30,7 @@
 #   DQX_JP_FONT  Override: substitute the JP UI fonts with this host family instead of
 #                installing IPAMona via winetricks (default: IPAMona if winetricks present)
 #   DQX_INHIBIT  1=hold an idle/sleep lock while playing (default), 0=don't
-#   DQX_BINPACK   Unpacked helper binpack    (default: ./vendor/binpack)
+#   DQX_WIN32_BINPACK  Unpacked win32 helper binpack (default: ./vendor/binpack/win32)
 #   DQX_MOVIE_COMPAT_GAMEID  Opt-in Wine WMReader workaround (default: disabled;
 #                            use 638160 for affected wine-cachyos 10.0 builds)
 #   DQX_UMU      umu-run binary for play-umu (default: umu-run)
@@ -51,7 +51,14 @@ SCRIPT_FILE="$(readlink -f -- "${BASH_SOURCE[0]}")"
 PLATFORM_DIR="${SCRIPT_FILE%/*}"
 : "${DQX_REPO_DIR:=$(CDPATH= cd -- "$PLATFORM_DIR/.." && pwd -P)}"
 SCRIPT_DIR="$DQX_REPO_DIR"
-: "${DQX_BINPACK:=$DQX_REPO_DIR/vendor/binpack}"
+: "${DQX_WIN32_BINPACK:=${DQX_BINPACK:-$DQX_REPO_DIR/vendor/binpack/win32}}"
+
+WIN32_BINPACK_RELEASE_TAG="win32-binpack-v20260701"
+WIN32_BINPACK_DIST="dqx-wine-helper-win32-binpack-v20260701.zip"
+WIN32_BINPACK_URL="https://github.com/AberrantWolf/dqx-proton-helper/releases/download/$WIN32_BINPACK_RELEASE_TAG/$WIN32_BINPACK_DIST"
+WIN32_BINPACK_SHA256="4be18b4dbc0d4a3b07e8e0acc685cbb6cff0e06f8b67d5c814a6651e948358d3"
+WIN32_BINPACK_CACHE_DIR="$HOME/.cache/dqx-wine-helper/binpack"
+WIN32_BINPACK_CACHE_FILE="$WIN32_BINPACK_CACHE_DIR/$WIN32_BINPACK_DIST"
 
 GAME_REL="drive_c/Program Files (x86)/SquareEnix/DRAGON QUEST X"
 GAME_WIN_GAMEDIR='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game'
@@ -75,14 +82,67 @@ warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 section() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mXX\033[0m %s\n' "$*" >&2; exit 1; }
 
+sha256_file() {
+  [ -f "$1" ] || return 1
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+abs_existing_file() {
+  [ -f "$1" ] || return 1
+  (CDPATH= cd -- "$(dirname -- "$1")" && printf '%s/%s\n' "$(pwd -P)" "$(basename -- "$1")")
+}
+
 launcher_clip_helper() {
-  if [ -f "$DQX_BINPACK/bin/dqx-launcher-clip.exe" ]; then
-    printf '%s\n' "$DQX_BINPACK/bin/dqx-launcher-clip.exe"
+  if [ -f "$DQX_WIN32_BINPACK/bin/dqx-launcher-clip.exe" ]; then
+    printf '%s\n' "$DQX_WIN32_BINPACK/bin/dqx-launcher-clip.exe"
+  elif [ -f "$SCRIPT_DIR/vendor/binpack/bin/dqx-launcher-clip.exe" ]; then
+    printf '%s\n' "$SCRIPT_DIR/vendor/binpack/bin/dqx-launcher-clip.exe"
   elif [ -f "$SCRIPT_DIR/dqx-launcher-clip.exe" ]; then
     printf '%s\n' "$SCRIPT_DIR/dqx-launcher-clip.exe"
   else
     return 1
   fi
+}
+
+cmd_binpack() {
+  local pack="${1:-}" pack_abs actual tmp
+  [ -n "$pack" ] || die "Usage: ./dqx.sh binpack /path/to/$WIN32_BINPACK_DIST"
+  pack_abs="$(abs_existing_file "$pack")" || die "Binpack not found: $pack"
+  if [ -n "${DQX_BINPACK_SHA256:-}" ]; then
+    actual="$(sha256_file "$pack_abs")"
+    [ "$actual" = "$DQX_BINPACK_SHA256" ] || die "Binpack hash mismatch: $actual"
+    ok "Binpack zip: SHA-256 verified"
+  else
+    warn "DQX_BINPACK_SHA256 is not set; installing without zip-level hash verification"
+  fi
+  command -v unzip >/dev/null 2>&1 || die "unzip not found"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/dqx-binpack.XXXXXX")"
+  unzip -q "$pack_abs" -d "$tmp"
+  [ -f "$tmp/bin/dqx-launcher-clip.exe" ] || { rm -rf "$tmp"; die "Win32 binpack is missing bin/dqx-launcher-clip.exe"; }
+  rm -rf "$DQX_WIN32_BINPACK"
+  mkdir -p "$DQX_WIN32_BINPACK"
+  cp -R "$tmp/." "$DQX_WIN32_BINPACK/"
+  rm -rf "$tmp"
+  ok "Win32 binpack installed to $DQX_WIN32_BINPACK"
+}
+
+cmd_fetch_binpack() {
+  mkdir -p "$WIN32_BINPACK_CACHE_DIR"
+  if [ -f "$WIN32_BINPACK_CACHE_FILE" ] && [ "$(sha256_file "$WIN32_BINPACK_CACHE_FILE")" = "$WIN32_BINPACK_SHA256" ]; then
+    ok "Win32 binpack: cached and verified"
+  else
+    command -v curl >/dev/null 2>&1 || die "curl not found; cannot download the win32 binpack"
+    msg "Downloading win32 helper binpack:"
+    msg "  $WIN32_BINPACK_URL"
+    curl -fL --progress-bar -o "$WIN32_BINPACK_CACHE_FILE.tmp" "$WIN32_BINPACK_URL"
+    if [ "$(sha256_file "$WIN32_BINPACK_CACHE_FILE.tmp")" != "$WIN32_BINPACK_SHA256" ]; then
+      rm -f "$WIN32_BINPACK_CACHE_FILE.tmp"
+      die "Downloaded win32 binpack hash did not match the pinned release hash"
+    fi
+    mv "$WIN32_BINPACK_CACHE_FILE.tmp" "$WIN32_BINPACK_CACHE_FILE"
+    ok "Win32 binpack: SHA-256 verified"
+  fi
+  DQX_BINPACK_SHA256="$WIN32_BINPACK_SHA256" cmd_binpack "$WIN32_BINPACK_CACHE_FILE"
 }
 
 # --- Wine discovery / capability probing ---------------------------------------
@@ -735,7 +795,7 @@ cmd_play() {
   if launcher_helper="$(launcher_clip_helper)"; then
     :
   else
-    warn "Updater redraw helper is missing. Install the optional binpack into: $DQX_BINPACK"
+    warn "Updater redraw helper is missing. Run './dqx.sh fetch-binpack' to install it into: $DQX_WIN32_BINPACK"
     warn "The updater still works, but moving its window may black out part of the progress bar."
   fi
 
@@ -799,11 +859,13 @@ cmd_play() {
 case "${1:-}" in
   doctor)  cmd_doctor ;;
   setup)   cmd_setup ;;
+  fetch-binpack) cmd_fetch_binpack ;;
+  binpack) shift; cmd_binpack "$@" ;;
   fonts)   cmd_fonts ;;
   install) shift; cmd_install "$@" ;;
   play)    cmd_play ;;
   play-umu|play-ge) cmd_play_umu ;;
   ""|-h|--help|help)
     sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d; s/^# \{0,1\}//' ;;
-  *) die "Unknown command: $1  (try: doctor | setup | fonts | install | play | play-umu)" ;;
+  *) die "Unknown command: $1  (try: doctor | setup | fetch-binpack | binpack | fonts | install | play | play-umu)" ;;
 esac

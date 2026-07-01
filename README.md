@@ -229,12 +229,11 @@ For the current CrossOver path, use:
 ./dqx.sh play
 ```
 
-The binpack step is optional but recommended for normal users: it downloads the pinned
-[macOS CrossOver 26.2 binpack](https://github.com/AberrantWolf/dqx-proton-helper/releases/tag/macos-crossover-26.2-binpack-v20260701),
-verifies its SHA-256, and installs small generated helper executables without requiring
-Xcode, Homebrew, MinGW, or a local Wine/CrossOver build tree. For offline/manual installs,
-download the zip yourself and run
-`./dqx.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
+The binpack step is optional but recommended for normal users: it downloads pinned release
+assets, verifies their SHA-256 hashes, and installs prebuilt helpers without requiring
+Xcode, Homebrew, MinGW, or a local Wine/CrossOver build tree. The packs are split by
+purpose: a shared `win32` pack for small Wine helper executables, and a macOS/CrossOver
+26.2 patch pack for hash-gated `.bsdiff` module deltas.
 
 On macOS, `./dqx.sh` auto-detects CrossOver and delegates to the CrossOver platform
 module. The helper refreshes the measured-good IPAMona/Ume font aliases, writes durable
@@ -290,7 +289,7 @@ stop every Wine/CrossOver process in that bottle before testing again.
   control is visible. It removes the style before the normal launcher takes over, because
   leaving it enabled breaks that UI. The helper is built from [`dqx-launcher-clip.c`](dqx-launcher-clip.c);
   users can get a prebuilt copy from the GitHub Release binpack instead of installing a
-  compiler. A redistributable standalone reproducer for the H&S first-map failure is in
+  compiler via `./dqx.sh fetch-binpack`. A redistributable standalone reproducer for the H&S first-map failure is in
   [`repro/first-map`](repro/first-map/README.md).
 - **CrossOver macOS cosmetic note:** during updater mode, the BGM ON/OFF icon may look OFF
   even when music is playing and `launcher.ini` says `PlayBGM=1`. The likely, not yet

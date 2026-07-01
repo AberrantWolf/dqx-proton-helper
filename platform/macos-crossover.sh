@@ -29,7 +29,8 @@
 #   CX_APP        CrossOver app bundle       (default: /Applications/CrossOver.app)
 #   CX_BOTTLE     CrossOver bottle name      (default: DQX)
 #   DQX_PATCH_DIR Local patch artifact dir   (default: ./patches/crossover-26.2/artifacts)
-#   DQX_BINPACK   Unpacked helper binpack    (default: ./vendor/binpack)
+#   DQX_WIN32_BINPACK  Unpacked win32 helper binpack (default: ./vendor/binpack/win32)
+#   DQX_CX_PATCH_BINPACK  Unpacked CrossOver patch binpack (default: ./vendor/binpack/macos-crossover-26.2)
 #   DQX_BINPACK_SHA256  Optional expected SHA-256 for ./dqx.sh binpack
 #   DQX_INHIBIT   1=hold a caffeinate lock   (default: 1)
 
@@ -43,7 +44,8 @@ PLATFORM_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 : "${DQX_REPO_DIR:=$(CDPATH= cd -- "$PLATFORM_DIR/.." && pwd -P)}"
 SCRIPT_DIR="$DQX_REPO_DIR"
 : "${DQX_PATCH_DIR:=$DQX_REPO_DIR/patches/crossover-26.2/artifacts}"
-: "${DQX_BINPACK:=$DQX_REPO_DIR/vendor/binpack}"
+: "${DQX_WIN32_BINPACK:=${DQX_BINPACK:-$DQX_REPO_DIR/vendor/binpack/win32}}"
+: "${DQX_CX_PATCH_BINPACK:=$DQX_REPO_DIR/vendor/binpack/macos-crossover-26.2}"
 
 CX_ROOT="$CX_APP/Contents/SharedSupport/CrossOver"
 CX_WINE="$CX_ROOT/bin/wine"
@@ -55,12 +57,16 @@ DQX_UNIX_DIR="$CX_BOTTLE_DIR/$DQX_REL"
 DQX_BOOT_DIR="$DQX_UNIX_DIR/Boot"
 DQX_GAME_WIN='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game'
 
-BINPACK_RELEASE_TAG="macos-crossover-26.2-binpack-v20260701"
-BINPACK_DIST="dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip"
-BINPACK_URL="https://github.com/AberrantWolf/dqx-proton-helper/releases/download/$BINPACK_RELEASE_TAG/$BINPACK_DIST"
-BINPACK_SHA256="794dbaca3e50cc6b52ecfbc13d129641b86f29026d7c1326d1494c40095fbc01"
+WIN32_BINPACK_RELEASE_TAG="win32-binpack-v20260701"
+WIN32_BINPACK_DIST="dqx-wine-helper-win32-binpack-v20260701.zip"
+WIN32_BINPACK_URL="https://github.com/AberrantWolf/dqx-proton-helper/releases/download/$WIN32_BINPACK_RELEASE_TAG/$WIN32_BINPACK_DIST"
+WIN32_BINPACK_SHA256="4be18b4dbc0d4a3b07e8e0acc685cbb6cff0e06f8b67d5c814a6651e948358d3"
+
+CX_PATCH_BINPACK_RELEASE_TAG="macos-crossover-26.2-patches-v20260701"
+CX_PATCH_BINPACK_DIST="dqx-wine-helper-macos-crossover-26.2-patches-v20260701.zip"
+CX_PATCH_BINPACK_URL="https://github.com/AberrantWolf/dqx-proton-helper/releases/download/$CX_PATCH_BINPACK_RELEASE_TAG/$CX_PATCH_BINPACK_DIST"
+CX_PATCH_BINPACK_SHA256="f8029a04a143ffd909169377572dcaafbf7f78136cc91870596a1dcda5b025a8"
 BINPACK_CACHE_DIR="$HOME/Library/Caches/dqx-wine-helper/binpack"
-BINPACK_CACHE_FILE="$BINPACK_CACHE_DIR/$BINPACK_DIST"
 
 GST_ROOT="/Library/Frameworks/GStreamer.framework/Versions/1.0"
 GST_INSPECT="$GST_ROOT/bin/gst-inspect-1.0"
@@ -90,6 +96,10 @@ IPAMONA_FONT_FILES=(
 WIN32U_HASH='761e3f607c7814de5aa88b9c07b0b7368ead3acd27d62ff0e5031bddc84ad45d'
 WINEGSTREAMER_PE_HASH='605caa4af8a159ef0a5aa258e06d7680b22f57b610095c4988e6a87914b1491a'
 WINEGSTREAMER_UNIX_HASH='8680c71a1991d51eebabe3132e127557877e7e35c6d0420ca767276c0b5250ad'
+
+WIN32U_STOCK_HASH='c465ac3c35460c7a8099f99b4a2666f35f72e1f5c3c8e316a854ca41ee1f1e39'
+WINEGSTREAMER_PE_STOCK_HASH='e2a7443bf5ac97c48373b325fb04b59abe85b139d1d2263e1886fdff6f49fb1f'
+WINEGSTREAMER_UNIX_STOCK_HASH='ca9c33574690018cf6376117abfbd6e4d630db0c778b15506b4e567489426b5d'
 
 WIN32U_TARGET="$CX_ROOT/lib/wine/x86_64-unix/win32u.so"
 WINEGSTREAMER_PE_TARGET="$CX_ROOT/lib/wine/i386-windows/winegstreamer.dll"
@@ -132,8 +142,10 @@ cx_workdir() {
 }
 
 launcher_clip_helper() {
-  if [ -f "$DQX_BINPACK/bin/dqx-launcher-clip.exe" ]; then
-    printf '%s\n' "$DQX_BINPACK/bin/dqx-launcher-clip.exe"
+  if [ -f "$DQX_WIN32_BINPACK/bin/dqx-launcher-clip.exe" ]; then
+    printf '%s\n' "$DQX_WIN32_BINPACK/bin/dqx-launcher-clip.exe"
+  elif [ -f "$SCRIPT_DIR/vendor/binpack/bin/dqx-launcher-clip.exe" ]; then
+    printf '%s\n' "$SCRIPT_DIR/vendor/binpack/bin/dqx-launcher-clip.exe"
   elif [ -f "$SCRIPT_DIR/dqx-launcher-clip.exe" ]; then
     printf '%s\n' "$SCRIPT_DIR/dqx-launcher-clip.exe"
   else
@@ -178,6 +190,51 @@ patch_artifact() {
   cp -p "$source" "$target"
   codesign --force --sign - "$target" >/dev/null 2>&1 || warn "$name: ad-hoc codesign failed"
   check_hash "$name" "$target" "$expected"
+}
+
+patch_bsdiff() {
+  local name="$1" target="$2" stock_hash="$3" expected="$4" delta="$5" actual tmp backup
+  if [ -f "$target" ] && [ "$(sha256_file "$target")" = "$expected" ]; then
+    ok "$name: already patched"
+    return 0
+  fi
+  [ -f "$delta" ] || {
+    warn "$name: no binpack delta at $delta"
+    return 1
+  }
+  [ -f "$target" ] || die "$name target missing: $target"
+  actual="$(sha256_file "$target")"
+  if [ "$actual" != "$stock_hash" ]; then
+    warn "$name: target is neither stock nor the verified patched build"
+    warn "  actual:         $actual"
+    warn "  expected stock: $stock_hash"
+    warn "  expected patch: $expected"
+    return 1
+  fi
+  command -v bspatch >/dev/null 2>&1 || die "bspatch not found; cannot apply $name delta"
+
+  tmp="$(mktemp "${TMPDIR:-/tmp}/dqx-bspatch.XXXXXX")"
+  bspatch "$target" "$tmp" "$delta"
+  actual="$(sha256_file "$tmp")"
+  if [ "$actual" != "$expected" ]; then
+    rm -f "$tmp"
+    die "$name patched output hash mismatch: $actual"
+  fi
+
+  backup="$target.stock-before-dqx-$(date +%Y%m%d-%H%M%S)"
+  msg "Backing up $(basename "$target") -> $(basename "$backup")"
+  cp -p "$target" "$backup"
+  cp -p "$tmp" "$target"
+  rm -f "$tmp"
+  codesign --force --sign - "$target" >/dev/null 2>&1 || warn "$name: ad-hoc codesign failed"
+  check_hash "$name" "$target" "$expected"
+}
+
+patch_module() {
+  local name="$1" target="$2" stock_hash="$3" expected="$4" artifact="$5" delta="$6"
+  patch_artifact "$name" "$target" "$expected" "$artifact" && return 0
+  patch_bsdiff "$name" "$target" "$stock_hash" "$expected" "$delta" && return 0
+  return 1
 }
 
 have_ipamona_fonts() {
@@ -240,16 +297,22 @@ install_ipamona_fonts() {
 cmd_patches() {
   require_crossover
   msg "Checking CrossOver binary patches"
-  patch_artifact "win32u.so H&S patch" \
-    "$WIN32U_TARGET" "$WIN32U_HASH" "$DQX_PATCH_DIR/win32u.so" || true
-  patch_artifact "winegstreamer.dll WMA-DMO patch" \
-    "$WINEGSTREAMER_PE_TARGET" "$WINEGSTREAMER_PE_HASH" "$DQX_PATCH_DIR/winegstreamer.dll" || true
-  patch_artifact "winegstreamer.so source-built GStreamer framework bridge" \
-    "$WINEGSTREAMER_UNIX_TARGET" "$WINEGSTREAMER_UNIX_HASH" "$DQX_PATCH_DIR/winegstreamer.so" || true
+  patch_module "win32u.so H&S patch" \
+    "$WIN32U_TARGET" "$WIN32U_STOCK_HASH" "$WIN32U_HASH" \
+    "$DQX_PATCH_DIR/win32u.so" \
+    "$DQX_CX_PATCH_BINPACK/patches/crossover-26.2/binary-deltas/win32u.so.bsdiff" || true
+  patch_module "winegstreamer.dll WMA-DMO patch" \
+    "$WINEGSTREAMER_PE_TARGET" "$WINEGSTREAMER_PE_STOCK_HASH" "$WINEGSTREAMER_PE_HASH" \
+    "$DQX_PATCH_DIR/winegstreamer.dll" \
+    "$DQX_CX_PATCH_BINPACK/patches/crossover-26.2/binary-deltas/winegstreamer.dll.bsdiff" || true
+  patch_module "winegstreamer.so source-built GStreamer framework bridge" \
+    "$WINEGSTREAMER_UNIX_TARGET" "$WINEGSTREAMER_UNIX_STOCK_HASH" "$WINEGSTREAMER_UNIX_HASH" \
+    "$DQX_PATCH_DIR/winegstreamer.so" \
+    "$DQX_CX_PATCH_BINPACK/patches/crossover-26.2/binary-deltas/winegstreamer.so.bsdiff" || true
 }
 
 cmd_binpack() {
-  local pack="${1:-}" pack_abs actual tmp
+  local pack="${1:-}" pack_abs actual tmp dest kind
   [ -n "$pack" ] || die "Usage: ./dqx.sh binpack /path/to/binpack.zip"
   pack_abs="$(abs_existing_file "$pack")" || die "Binpack not found: $pack"
 
@@ -269,31 +332,49 @@ cmd_binpack() {
     rm -rf "$tmp"
     die "Refusing binpack with full CrossOver modules; use .bsdiff deltas only"
   fi
+  if [ -f "$tmp/bin/dqx-launcher-clip.exe" ]; then
+    dest="$DQX_WIN32_BINPACK"
+    kind="Win32 helper"
+  elif [ -d "$tmp/patches/crossover-26.2/binary-deltas" ]; then
+    dest="$DQX_CX_PATCH_BINPACK"
+    kind="CrossOver 26.2 patch"
+  else
+    rm -rf "$tmp"
+    die "Binpack is neither a win32 helper pack nor a CrossOver 26.2 patch pack"
+  fi
 
-  rm -rf "$DQX_BINPACK"
-  mkdir -p "$DQX_BINPACK"
-  cp -R "$tmp/." "$DQX_BINPACK/"
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  cp -R "$tmp/." "$dest/"
   rm -rf "$tmp"
-  ok "Binpack installed to $DQX_BINPACK"
+  ok "$kind binpack installed to $dest"
+}
+
+fetch_one_binpack() {
+  local label="$1" url="$2" expected="$3" cache_file="$4"
+  mkdir -p "$BINPACK_CACHE_DIR"
+  if [ -f "$cache_file" ] && [ "$(sha256_file "$cache_file")" = "$expected" ]; then
+    ok "$label binpack: cached and verified"
+  else
+    command -v curl >/dev/null 2>&1 || die "curl not found; cannot download binpacks"
+    msg "Downloading $label binpack:"
+    msg "  $url"
+    curl -fL --progress-bar -o "$cache_file.tmp" "$url"
+    if [ "$(sha256_file "$cache_file.tmp")" != "$expected" ]; then
+      rm -f "$cache_file.tmp"
+      die "Downloaded $label binpack hash did not match the pinned release hash"
+    fi
+    mv "$cache_file.tmp" "$cache_file"
+    ok "$label binpack: SHA-256 verified"
+  fi
+  DQX_BINPACK_SHA256="$expected" cmd_binpack "$cache_file"
 }
 
 cmd_fetch_binpack() {
-  mkdir -p "$BINPACK_CACHE_DIR"
-  if [ -f "$BINPACK_CACHE_FILE" ] && [ "$(sha256_file "$BINPACK_CACHE_FILE")" = "$BINPACK_SHA256" ]; then
-    ok "Binpack: cached and verified"
-  else
-    command -v curl >/dev/null 2>&1 || die "curl not found; cannot download the binpack"
-    msg "Downloading optional helper binpack:"
-    msg "  $BINPACK_URL"
-    curl -fL --progress-bar -o "$BINPACK_CACHE_FILE.tmp" "$BINPACK_URL"
-    if [ "$(sha256_file "$BINPACK_CACHE_FILE.tmp")" != "$BINPACK_SHA256" ]; then
-      rm -f "$BINPACK_CACHE_FILE.tmp"
-      die "Downloaded binpack hash did not match the pinned release hash"
-    fi
-    mv "$BINPACK_CACHE_FILE.tmp" "$BINPACK_CACHE_FILE"
-    ok "Binpack: SHA-256 verified"
-  fi
-  DQX_BINPACK_SHA256="$BINPACK_SHA256" cmd_binpack "$BINPACK_CACHE_FILE"
+  fetch_one_binpack "Win32 helper" "$WIN32_BINPACK_URL" "$WIN32_BINPACK_SHA256" \
+    "$BINPACK_CACHE_DIR/$WIN32_BINPACK_DIST"
+  fetch_one_binpack "CrossOver 26.2 patch" "$CX_PATCH_BINPACK_URL" "$CX_PATCH_BINPACK_SHA256" \
+    "$BINPACK_CACHE_DIR/$CX_PATCH_BINPACK_DIST"
 }
 
 set_cxbottle_env() {
@@ -403,7 +484,7 @@ cmd_play() {
     msg "Starting updater progress redraw helper"
     cx "$clip_helper" &
   else
-    warn "Updater progress helper missing. Install the optional binpack into: $DQX_BINPACK"
+    warn "Updater progress helper missing. Run './dqx.sh fetch-binpack' to install it into: $DQX_WIN32_BINPACK"
   fi
   if [ "$DQX_INHIBIT" != 0 ] && command -v caffeinate >/dev/null 2>&1; then
     wake=(caffeinate -dimsu)
@@ -496,7 +577,7 @@ cmd_doctor() {
   if clip_helper="$(launcher_clip_helper)"; then
     ok "Updater progress helper: $clip_helper"
   else
-    warn "Updater progress helper: missing. Install the optional binpack into $DQX_BINPACK"
+    warn "Updater progress helper: missing. Run './dqx.sh fetch-binpack' to install it into $DQX_WIN32_BINPACK"
   fi
   if [ -f "$DQX_BOOT_DIR/DQXBoot.exe" ]; then
     ok "DQX install: found $DQX_BOOT_DIR/DQXBoot.exe"

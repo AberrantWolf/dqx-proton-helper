@@ -17,13 +17,14 @@ Quick path:
 ```
 
 The `fetch-binpack` step is the no-build-environment path for normal users. It downloads
-the pinned
-[macOS CrossOver 26.2 binpack](https://github.com/AberrantWolf/dqx-proton-helper/releases/tag/macos-crossover-26.2-binpack-v20260701),
-verifies SHA-256
-`794dbaca3e50cc6b52ecfbc13d129641b86f29026d7c1326d1494c40095fbc01`, and unpacks it into
-`vendor/binpack/`, where the macOS helper looks for small generated helper executables such
-as `bin/dqx-launcher-clip.exe`. For offline/manual installs, download the zip yourself and
-run `./dqx.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
+two pinned release assets:
+
+- `dqx-wine-helper-win32-binpack-v20260701.zip`, installed to `vendor/binpack/win32/`.
+- `dqx-wine-helper-macos-crossover-26.2-patches-v20260701.zip`, installed to
+  `vendor/binpack/macos-crossover-26.2/`.
+
+The first contains small Win32 helper executables such as `bin/dqx-launcher-clip.exe`. The
+second contains exact-hash `.bsdiff` deltas for the CrossOver 26.2 modules.
 
 ## Stack
 
@@ -207,10 +208,9 @@ Previous findings that still seem useful:
   characters on screen, persistent, random per-frame. Removing the MVK arg-buffers env var
   (above) didn't fix it. Working theory *(unverified)*: dynamic vertex-buffer / submission
   sync under load. Next experiment, not yet applied: `dxgi.maxFrameLatency = 1`.
-- **Make the CrossOver patches fully turnkey.** The source patches and local artifact path
-  are checked in. Binary deltas are still not generated, so users currently need locally
-  supplied patched modules or a maintainer-built artifact set for the CrossOver module
-  replacements.
+- **Make the CrossOver patches fully turnkey.** Binary deltas are generated and supported
+  by the helper, but the split release assets still need to be uploaded and pinned before
+  fresh users can run the whole path without local artifacts.
 - **CodeWeavers bug report.** The H&S behavior is still worth reporting. Minimal repro:
   DQX's `DQXLauncher.exe` creates a splash-sized parent surface and a visible 640x480
   child/static `SS_BITMAP` H&S control; the child bitmap is present but is not shown unless
@@ -262,8 +262,7 @@ quietly widening a workaround.
 
 ## Remaining Work
 
-- Generate exact-hash binary deltas, or replace the local module patches with upstream
-  CrossOver fixes.
+- Upload and pin the split win32 and macOS/CrossOver 26.2 binpack release assets.
 - Add reproducible build scripts for the three patched CrossOver modules.
 - Report the H&S redraw issue and the `winegstreamer` `dwStatus` fix to CodeWeavers.
 - Keep testing graphics/performance regressions from the clean minimal baseline.

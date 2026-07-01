@@ -10,9 +10,17 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 REPO_DIR="$(dirname -- "$SCRIPT_DIR")"
 
-: "${BINPACK_NAME:=dqx-wine-helper-macos-crossover-26.2-binpack-$(date +%Y%m%d)}"
+: "${BINPACK_NAME:=dqx-wine-helper-binpack-$(date +%Y%m%d)}"
 : "${BINPACK_INPUT:=$REPO_DIR/build/binpack-input}"
 : "${BINPACK_OUTPUT:=$REPO_DIR/build/binpack-release}"
+: "${BINPACK_TARGET_PLATFORM:=macos}"
+if [ -z "${BINPACK_TARGET_CROSSOVER+x}" ]; then
+  if [ "$BINPACK_TARGET_PLATFORM" = macos ]; then
+    BINPACK_TARGET_CROSSOVER=26.2
+  else
+    BINPACK_TARGET_CROSSOVER=
+  fi
+fi
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 msg() { printf '>> %s\n' "$*"; }
@@ -36,8 +44,13 @@ manifest="$work/manifest.json"
   printf '  "name": "%s",\n' "$BINPACK_NAME"
   printf '  "format": 1,\n'
   printf '  "target": {\n'
-  printf '    "platform": "macos",\n'
-  printf '    "crossover": "26.2"\n'
+  printf '    "platform": "%s"' "$BINPACK_TARGET_PLATFORM"
+  if [ -n "$BINPACK_TARGET_CROSSOVER" ]; then
+    printf ',\n'
+    printf '    "crossover": "%s"\n' "$BINPACK_TARGET_CROSSOVER"
+  else
+    printf '\n'
+  fi
   printf '  },\n'
   printf '  "files": [\n'
   first=1
