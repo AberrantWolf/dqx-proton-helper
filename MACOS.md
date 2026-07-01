@@ -207,10 +207,10 @@ Previous findings that still seem useful:
   characters on screen, persistent, random per-frame. Removing the MVK arg-buffers env var
   (above) didn't fix it. Working theory *(unverified)*: dynamic vertex-buffer / submission
   sync under load. Next experiment, not yet applied: `dxgi.maxFrameLatency = 1`.
-- **Make the CrossOver patches distributable.** `./dqx.sh` can apply local patched
-  module artifacts by hash, but the repo cannot ship proprietary CodeWeavers binaries. Need
-  decide whether to ship source patches/build instructions, generate binary patches from
-  user-owned originals, or file/land CrossOver fixes first.
+- **Make the CrossOver patches fully turnkey.** The source patches and local artifact path
+  are checked in. Binary deltas are still not generated, so users currently need locally
+  supplied patched modules or a maintainer-built artifact set for the CrossOver module
+  replacements.
 - **CodeWeavers bug report.** The H&S behavior is still worth reporting. Minimal repro:
   DQX's `DQXLauncher.exe` creates a splash-sized parent surface and a visible 640x480
   child/static `SS_BITMAP` H&S control; the child bitmap is present but is not shown unless
@@ -260,12 +260,13 @@ If a new CrossOver version fails in a new way, first rerun the window/module dia
 `RESEARCH-NOTES.md` before changing the setup script. A clean failure note is better than
 quietly widening a workaround.
 
-## Plan
+## Remaining Work
 
-Sequencing: (1) harden the macOS CrossOver path into a user-facing setup flow; (2) replace local
-binary artifacts with source-patch/build or upstream CrossOver fixes; (3) keep testing
-graphics/performance regressions from the clean minimal baseline. Plus: report the
-`wma_decoder` `dwStatus` bug to CodeWeavers so the local patch is not needed long-term.
+- Generate exact-hash binary deltas, or replace the local module patches with upstream
+  CrossOver fixes.
+- Add reproducible build scripts for the three patched CrossOver modules.
+- Report the H&S redraw issue and the `winegstreamer` `dwStatus` fix to CodeWeavers.
+- Keep testing graphics/performance regressions from the clean minimal baseline.
 
 ## Diagnostics notes
 

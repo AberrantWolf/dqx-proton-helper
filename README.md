@@ -217,6 +217,8 @@ UI. The cause, tested configurations, Winetricks-free CrossOver font steps,
 registry alternative, and DPI checks are in
 [UI-SCALING.md](UI-SCALING.md).
 
+### macOS / CrossOver
+
 For the current CrossOver path, use:
 
 ```sh
@@ -234,7 +236,8 @@ Xcode, Homebrew, MinGW, or a local Wine/CrossOver build tree. For offline/manual
 download the zip yourself and run
 `./dqx.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
 
-The helper refreshes the measured-good IPAMona/Ume font aliases, writes durable
+On macOS, `./dqx.sh` auto-detects CrossOver and delegates to the CrossOver platform
+module. The helper refreshes the measured-good IPAMona/Ume font aliases, writes durable
 CrossOver bottle environment variables for `WINEPATH` and GStreamer, runs the installer
 from its own directory, starts the updater progress helper, and verifies the known-good
 patched CrossOver module hashes. It does **not** redistribute CrossOver binaries; local
@@ -242,9 +245,8 @@ patch artifacts, if used, belong in
 [patches/crossover-26.2/artifacts](patches/crossover-26.2/artifacts/). See
 [MACOS.md](MACOS.md) for the current verified stack and remaining packaging caveats.
 
-If you already made the prefix before this font fix, run `./dqx.sh fonts` once
-and then stop every Wine process in that prefix before testing again. That
-refreshes the exact ASCII and localized MS Gothic aliases used by DQXConfig.
+If you already made the bottle before this font fix, run `./dqx.sh fonts` once and then
+stop every Wine/CrossOver process in that bottle before testing again.
 
 ## What you don't need
 
