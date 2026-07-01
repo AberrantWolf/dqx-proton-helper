@@ -1,11 +1,17 @@
 # dqx-proton-helper
 
-Helper scripts for running **Dragon Quest X Online (Japanese client)** on Linux. The
-default path uses plain **Wine** (no Steam or Lutris), creates and provisions a Wine
-prefix, runs your copy of the DQX installer, and launches the game with the few
+Helper scripts for running **Dragon Quest X Online (Japanese client)** through Wine.
+The default Linux path uses plain **Wine** (no Steam or Lutris), creates and provisions
+a Wine prefix, runs your copy of the DQX installer, and launches the game with the few
 non-obvious settings needed for gameplay, the launcher's HTML UI, and FMV playback.
 Plain Wine 11.11 is verified on CachyOS and Ubuntu 24.04; `GE-Proton11-1` through
 `umu` remains an optional fallback.
+
+There is also an early **Apple Silicon Mac / CrossOver** helper:
+`./macos-crossover.sh`. That path is separate because CrossOver setup is bottle- and
+app-bundle-oriented rather than plain-prefix-oriented. The Mac helper does not require
+winetricks; it downloads the whole IPAMona font package from FreeBSD's ports distcache,
+verifies the pinned SHA-256, and installs the local user fonts itself.
 
 > Yeah, the repo's called `dqx-proton-helper`. It started out using Proton through
 > umu, and the name stuck. The default path is now plain Wine on both tested systems.
@@ -61,7 +67,8 @@ days, so I'm not precious about it.
 - **Wine 11.11 or newer** is recommended. Both pure-new-WoW64 distro builds and WineHQ
   multilib builds work when the correct mode is active. Selected downstream Wine 10 builds
   may work, but are not the primary baseline.
-- **winetricks** — used to install the Japanese IPAMona fonts.
+- **winetricks** — used on Linux to install the Japanese IPAMona fonts. The macOS/CrossOver
+  helper has its own FreeBSD-backed font download path instead.
 - For plain Wine, **GStreamer + gst-libav** provide the launcher movie and in-game FMV
   decoding. You need `asfdemux`, `avdec_wmv3`, `avdec_wmav2`, and the normal conversion
   elements. GE-Proton11's optional fallback uses its own Wine DMO/FFmpeg path instead.
@@ -139,14 +146,14 @@ some checks bolted on. Swap in your own paths.
    bare name, and without that it can't find it (you get `ErrorCode = 2` and a bogus
    "your install is corrupted"):
 
-   The per-app registry value preserves the pre-launch H&S warning under X11. The bundled
-   helper adds child clipping only while the updater progress control is visible, then
-   removes it before the normal launcher takes over.
+   The per-app registry value preserves the pre-launch H&S warning under X11. The optional
+   binpack helper adds child clipping only while the updater progress control is visible,
+   then removes it before the normal launcher takes over.
 
    ```sh
    wine reg add 'HKCU\Software\Wine\AppDefaults\DQXLauncher.exe\X11 Driver' \
      /v Managed /t REG_SZ /d N /f
-   wine /path/to/dqx-proton-helper/dqx-launcher-clip.exe &
+   wine /path/to/dqx-proton-helper/vendor/binpack/bin/dqx-launcher-clip.exe &
    cd "$WINEPREFIX/drive_c/Program Files (x86)/SquareEnix/DRAGON QUEST X/Boot"
    LC_ALL=ja_JP.UTF-8 \
      WINEPATH='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game' \
@@ -161,6 +168,7 @@ Same steps, automated, with prerequisite checks:
 ```sh
 ./dqx.sh doctor                          # verify Wine mode and prerequisites
 ./dqx.sh setup                           # make the prefix: Gecko + IPAMona + TLS
+./dqx.sh fonts                           # refresh IPAMona / Japanese font aliases in an existing prefix
 ./dqx.sh install /path/to/Setup.exe      # run your installer (give it the real path)
 ./dqx.sh play                            # recommended: plain Wine
 # fallback: ./dqx.sh play-umu            # GE-Proton11 through umu
@@ -209,6 +217,35 @@ UI. The cause, tested configurations, Winetricks-free CrossOver font steps,
 registry alternative, and DPI checks are in
 [UI-SCALING.md](UI-SCALING.md).
 
+For the current CrossOver path, use:
+
+```sh
+./macos-crossover.sh doctor
+./macos-crossover.sh fetch-binpack
+./macos-crossover.sh setup
+./macos-crossover.sh install /path/to/Setup.exe
+./macos-crossover.sh play
+```
+
+The binpack step is optional but recommended for normal users: it downloads the pinned
+[macOS CrossOver 26.2 binpack](https://github.com/AberrantWolf/dqx-proton-helper/releases/tag/macos-crossover-26.2-binpack-v20260701),
+verifies its SHA-256, and installs small generated helper executables without requiring
+Xcode, Homebrew, MinGW, or a local Wine/CrossOver build tree. For offline/manual installs,
+download the zip yourself and run
+`./macos-crossover.sh binpack /path/to/dqx-wine-helper-macos-crossover-26.2-binpack-v20260701.zip`.
+
+The helper refreshes the measured-good IPAMona/Ume font aliases, writes durable
+CrossOver bottle environment variables for `WINEPATH` and GStreamer, runs the installer
+from its own directory, starts the updater progress helper, and verifies the known-good
+patched CrossOver module hashes. It does **not** redistribute CrossOver binaries; local
+patch artifacts, if used, belong in
+[patches/crossover-26.2/artifacts](patches/crossover-26.2/artifacts/). See
+[MACOS.md](MACOS.md) for the current verified stack and remaining packaging caveats.
+
+If you already made the prefix before this font fix, run `./dqx.sh fonts` once
+and then stop every Wine process in that prefix before testing again. That
+refreshes the exact ASCII and localized MS Gothic aliases used by DQXConfig.
+
 ## What you don't need
 
 - **Steam, Lutris, Proton, or umu.** Plain Wine is the verified default on both
@@ -247,11 +284,16 @@ registry alternative, and DPI checks are in
   the verified WineHQ 11.11 path.
 - **A black H&S screen or black strip in the updater progress bar.** `./dqx.sh play` now
   applies two narrowly scoped workarounds: only `DQXLauncher.exe` is unmanaged under X11,
-  and the bundled 3.5 KiB helper adds `WS_CLIPCHILDREN` only while the updater progress
+  and the optional binpack helper adds `WS_CLIPCHILDREN` only while the updater progress
   control is visible. It removes the style before the normal launcher takes over, because
   leaving it enabled breaks that UI. The helper is built from [`dqx-launcher-clip.c`](dqx-launcher-clip.c);
-  no compiler is needed to run the included executable. A redistributable standalone
-  reproducer for the H&S first-map failure is in [`repro/first-map`](repro/first-map/README.md).
+  users can get a prebuilt copy from the GitHub Release binpack instead of installing a
+  compiler. A redistributable standalone reproducer for the H&S first-map failure is in
+  [`repro/first-map`](repro/first-map/README.md).
+- **CrossOver macOS cosmetic note:** during updater mode, the BGM ON/OFF icon may look OFF
+  even when music is playing and `launcher.ini` says `PlayBGM=1`. The likely, not yet
+  cause-verified explanation is that the temporary `WS_CLIPCHILDREN` progress-bar workaround
+  clips a parent-painted ON overlay while leaving a child/base OFF-looking icon visible.
 - If the launcher spawns a brief **"already running"** popup, you may need to reinstall
   your game. This happened when I was copying pre-installed assets between prefixes, and
   the only fix that worked was to completely reinstall the whole game in the prefix.
@@ -259,5 +301,5 @@ registry alternative, and DPI checks are in
 ## License
 
 Public domain — see [UNLICENSE](UNLICENSE). No warranty of any kind; use at your own
-risk. Not affiliated with or endorsed by Square Enix. "Dragon Quest" is a trademark of
-its respective owner.
+risk. Third-party licensing notes are in [LICENSES.md](LICENSES.md). Not affiliated
+with or endorsed by Square Enix. "Dragon Quest" is a trademark of its respective owner.

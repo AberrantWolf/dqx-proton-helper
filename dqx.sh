@@ -17,6 +17,7 @@
 # Usage:
 #   ./dqx.sh doctor                  # check prerequisites
 #   ./dqx.sh setup                   # create + provision a clean Wine prefix
+#   ./dqx.sh fonts                   # install/refresh Japanese font aliases in a prefix
 #   ./dqx.sh install /path/Setup.exe # run YOUR DQX installer into the prefix
 #   ./dqx.sh play                    # launch the game with plain Wine
 #   ./dqx.sh play-umu                # Ubuntu fallback: launch with GE-Proton11 via umu
@@ -29,6 +30,7 @@
 #   DQX_JP_FONT  Override: substitute the JP UI fonts with this host family instead of
 #                installing IPAMona via winetricks (default: IPAMona if winetricks present)
 #   DQX_INHIBIT  1=hold an idle/sleep lock while playing (default), 0=don't
+#   DQX_BINPACK   Unpacked helper binpack    (default: ./vendor/binpack)
 #   DQX_MOVIE_COMPAT_GAMEID  Opt-in Wine WMReader workaround (default: disabled;
 #                            use 638160 for affected wine-cachyos 10.0 builds)
 #   DQX_UMU      umu-run binary for play-umu (default: umu-run)
@@ -47,7 +49,7 @@ set -euo pipefail
 
 SCRIPT_FILE="$(readlink -f -- "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="${SCRIPT_FILE%/*}"
-LAUNCHER_CLIP_HELPER="$SCRIPT_DIR/dqx-launcher-clip.exe"
+: "${DQX_BINPACK:=$SCRIPT_DIR/vendor/binpack}"
 
 GAME_REL="drive_c/Program Files (x86)/SquareEnix/DRAGON QUEST X"
 GAME_WIN_GAMEDIR='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game'
@@ -55,10 +57,12 @@ GAME_WIN_GAMEDIR='C:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game'
 # mshtml/Gecko is left ENABLED on purpose — the launcher's UI is HTML.
 : "${DQX_DLLOVERRIDES:=mscoree=}"
 
-# Japanese UI font names the DQX installer/launcher request; we point them at a
-# CJK-capable font so text isn't rendered as tofu (missing-glyph boxes).
+# Japanese UI font names the DQX tools request; DQXConfig.exe in particular uses
+# the localized/full-width MS Gothic names, so the fallback path must cover those
+# exact faces instead of only the ASCII aliases.
 JP_FONT_NAMES=(
-  "MS UI Gothic" "MS Gothic" "MS PGothic" "MS Mincho" "MS PMincho"
+  "MS Gothic" "MS PGothic" "MS Mincho" "MS PMincho"
+  "ＭＳ ゴシック" "ＭＳ Ｐゴシック" "ＭＳ 明朝" "ＭＳ Ｐ明朝"
   "Meiryo" "Meiryo UI" "Yu Gothic" "Yu Gothic UI"
   "MS Sans Serif" "MS Shell Dlg" "MS Shell Dlg 2" "Tahoma"
 )
@@ -68,6 +72,16 @@ ok()   { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 section() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mXX\033[0m %s\n' "$*" >&2; exit 1; }
+
+launcher_clip_helper() {
+  if [ -f "$DQX_BINPACK/bin/dqx-launcher-clip.exe" ]; then
+    printf '%s\n' "$DQX_BINPACK/bin/dqx-launcher-clip.exe"
+  elif [ -f "$SCRIPT_DIR/dqx-launcher-clip.exe" ]; then
+    printf '%s\n' "$SCRIPT_DIR/dqx-launcher-clip.exe"
+  else
+    return 1
+  fi
+}
 
 # --- Wine discovery / capability probing ---------------------------------------
 
@@ -560,6 +574,26 @@ install_gecko() {
 
 ipamona_present() { [ -f "$DQX_PREFIX/drive_c/windows/Fonts/ipagui-mona.ttf" ]; }
 
+# Make the metric-compatible aliases explicit even when winetricks installed the
+# files. This protects us from verb changes and covers DQXConfig's localized
+# dialog font name (`ＭＳ ゴシック`) directly.
+apply_ipamona_aliases() {
+  msg "Aliasing Japanese UI fonts -> IPAMona (metric-compatible)"
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "MS Gothic" /t REG_SZ /d "IPAMonaGothic" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "MS PGothic" /t REG_SZ /d "IPAMonaPGothic" /f
+  # DQXLauncher's owner-drawn player list uses MS UI Gothic through GDI+.
+  # Replacing that exact face can make the labels render blank on CrossOver.
+  WINEDEBUG=-all w reg delete 'HKCU\Software\Wine\Fonts\Replacements' /v "MS UI Gothic" /f >/dev/null 2>&1 || true
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "MS Mincho" /t REG_SZ /d "IPAMonaMincho" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "MS PMincho" /t REG_SZ /d "IPAMonaPMincho" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "MS Shell Dlg" /t REG_SZ /d "IPAMonaUIGothic" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "MS Shell Dlg 2" /t REG_SZ /d "Tahoma" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "ＭＳ ゴシック" /t REG_SZ /d "IPAMonaGothic" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "ＭＳ Ｐゴシック" /t REG_SZ /d "IPAMonaPGothic" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "ＭＳ 明朝" /t REG_SZ /d "IPAMonaMincho" /f
+  reg_add 'HKCU\Software\Wine\Fonts\Replacements' /v "ＭＳ Ｐ明朝" /t REG_SZ /d "IPAMonaPMincho" /f
+}
+
 # Substitute every JP UI font name with one host-installed family (fallback path).
 apply_fonts_host() {
   local font="$1" name
@@ -573,19 +607,21 @@ apply_fonts_host() {
 apply_fonts() {
   # Explicit override: substitute with a user-chosen host font family.
   if [ -n "${DQX_JP_FONT:-}" ]; then apply_fonts_host "$DQX_JP_FONT"; return; fi
+  if ipamona_present; then apply_ipamona_aliases; ok "Japanese fonts: IPAMona already installed and aliases refreshed."; return; fi
   # Preferred: IPAMona via winetricks. It's metric-compatible with MS PGothic / MS UI
   # Gothic (the fonts DQX's dialogs were laid out for), and installs INTO the prefix,
   # so dialogs render correctly and the setup is self-contained / portable. Other CJK
   # fonts render text fine but distort dialog layout (Noto: too big; VL Gothic: too small).
   if command -v winetricks >/dev/null 2>&1; then
     msg "Installing IPAMona Japanese fonts (winetricks fakejapanese_ipamona)..."
-    # The verb aliases MS Gothic/PGothic/UI Gothic/Mincho/PMincho (+ JP-named variants).
-    # Once IPAMona is a real font in the prefix, Wine's glyph fallback covers the other
-    # font names (Tahoma, MS Sans Serif, MS Shell Dlg, ...), so no extra aliases are needed.
+    # The verb should alias MS Gothic/PGothic/UI Gothic/Mincho/PMincho (+ JP-named
+    # variants); apply our known-good aliases too so DQXConfig's full-width face name
+    # cannot fall through to a bad host CJK font with different metrics.
     # Winetricks currently recognizes only win32/win64. The prefix itself remains
     # 64-bit; DQX is launched later with the independently selected new-WoW64 mode.
     if WINE="$WINE" WINEPREFIX="$DQX_PREFIX" WINEARCH=win64 WINEDEBUG=-all \
          winetricks -q fakejapanese_ipamona >/dev/null 2>&1 && ipamona_present; then
+      apply_ipamona_aliases
       ok "Japanese fonts: IPAMona installed and aliased."
       return
     fi
@@ -595,6 +631,13 @@ apply_fonts() {
     warn "  For correct dialog layout, install winetricks (the script will then use IPAMona)."
   fi
   apply_fonts_host "$(detect_jp_font || true)"
+}
+
+cmd_fonts() {
+  [ -d "$DQX_PREFIX/drive_c" ] || die "No prefix yet. Run ./dqx.sh setup first, or set DQX_PREFIX."
+  have_wine || die "Wine ('$WINE') not found."
+  apply_fonts
+  warn "Restart every Wine process using this prefix before testing font/layout changes."
 }
 
 apply_tls() {
@@ -687,10 +730,10 @@ cmd_play() {
   if ! apply_launcher_x11_settings; then
     warn "Could not set the per-app unmanaged X11 workaround; the H&S warning may be black."
   fi
-  if [ -f "$LAUNCHER_CLIP_HELPER" ]; then
-    launcher_helper="$LAUNCHER_CLIP_HELPER"
+  if launcher_helper="$(launcher_clip_helper)"; then
+    :
   else
-    warn "Updater redraw helper is missing: $LAUNCHER_CLIP_HELPER"
+    warn "Updater redraw helper is missing. Install the optional binpack into: $DQX_BINPACK"
     warn "The updater still works, but moving its window may black out part of the progress bar."
   fi
 
@@ -754,10 +797,11 @@ cmd_play() {
 case "${1:-}" in
   doctor)  cmd_doctor ;;
   setup)   cmd_setup ;;
+  fonts)   cmd_fonts ;;
   install) shift; cmd_install "$@" ;;
   play)    cmd_play ;;
   play-umu|play-ge) cmd_play_umu ;;
   ""|-h|--help|help)
     sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d; s/^# \{0,1\}//' ;;
-  *) die "Unknown command: $1  (try: doctor | setup | install | play | play-umu)" ;;
+  *) die "Unknown command: $1  (try: doctor | setup | fonts | install | play | play-umu)" ;;
 esac

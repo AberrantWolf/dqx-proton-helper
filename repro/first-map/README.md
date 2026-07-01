@@ -32,7 +32,8 @@ i686-w64-mingw32-gcc -O2 -Wall -Wextra -Werror \
   -o dqx-first-map-repro.exe dqx-first-map-repro.c
 ```
 
-The prebuilt 32-bit executable is included for convenience.
+Prebuilt executables are not committed to the source tree. If provided, they
+belong in an optional GitHub Release binary pack.
 
 ## Run
 
@@ -55,4 +56,5 @@ The practical DQX workaround is a per-application `Managed=N` Wine X11 setting.
 Making this reproducer unmanaged likewise avoids the managed-map race, but that
 is a compatibility workaround rather than a general Wine fix.
 
-The source and executable are public domain under the repository's UNLICENSE.
+The source, and any executable built from it, are public domain under the
+repository's UNLICENSE.

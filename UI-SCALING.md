@@ -119,13 +119,16 @@ DQXConfig build, install IPAMona manually:
    | `IPAMonaPMincho (TrueType)` | `ipamp-mona.ttf` |
 
 4. Under `HKEY_CURRENT_USER\Software\Wine\Fonts\Replacements`, create these
-   string values. The full-width Japanese spellings are important:
+   string values. The full-width Japanese spellings are important. For CrossOver
+   Mac, keep `MS UI Gothic` on CodeWeavers' `Ume UI Gothic` face; DQXBoot uses
+   that font to size its startup splash, and letting it fall through to host
+   fallback can produce a large white border around the splash bitmap.
 
    | Value name | Data |
    | --- | --- |
    | `MS Gothic` | `IPAMonaGothic` |
    | `MS PGothic` | `IPAMonaPGothic` |
-   | `MS UI Gothic` | `IPAMonaUIGothic` |
+   | `MS UI Gothic` | `Ume UI Gothic` |
    | `MS Mincho` | `IPAMonaMincho` |
    | `MS PMincho` | `IPAMonaPMincho` |
    | `ＭＳ ゴシック` | `IPAMonaGothic` |

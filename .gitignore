@@ -1,5 +1,22 @@
 # Nothing game-related is stored here — prefixes/installers live elsewhere.
-# Editor / OS cruft only.
+# Editor / OS cruft and generated runtime caches only.
 *~
 *.swp
 .DS_Store
+*.dxvk-cache
+build/
+vendor/binpack/
+
+# Generated/native/Windows binary artifacts. Publish these through release
+# binpacks instead of committing loose binaries to the source tree.
+*.exe
+*.dll
+*.so
+*.dylib
+*.zip
+
+# Local CrossOver patch artifacts and generated binary deltas.
+patches/crossover-26.2/artifacts/*
+!patches/crossover-26.2/artifacts/README.md
+patches/crossover-26.2/binary-deltas/*.bsdiff
+patches/crossover-26.2/binary-deltas/*.tmp
