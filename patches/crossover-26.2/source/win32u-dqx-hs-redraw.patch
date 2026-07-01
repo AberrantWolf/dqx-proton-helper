@@ -1,0 +1,70 @@
+--- a/dlls/win32u/window.c
++++ b/dlls/win32u/window.c
+@@ -2204,7 +2204,57 @@
+ 
+     return new_surface;
+ }
++
++static void dqx_print_visible_children_after_surface_show( HWND hwnd, struct window_surface *surface )
++{
++    HWND *list, *child;
++    HDC hdc;
++
++    if (!(hdc = NtUserGetDC( hwnd ))) return;
++
++    TRACE( "DQX post-surface print hwnd %p\n", hwnd );
++
++    if ((list = list_window_children( hwnd )))
++    {
++        for (child = list; *child; child++)
++        {
++            POINT org;
++            RECT rect;
++            UINT dpi;
+ 
++            if (!(get_window_long( *child, GWL_STYLE ) & WS_VISIBLE)) continue;
++
++            dpi = NtUserGetDpiForWindow( *child );
++            NtUserGetClientRect( *child, &rect, dpi );
++            NtUserMapWindowPoints( *child, hwnd, (POINT *)&rect, 2, dpi );
++            TRACE( "DQX post-surface print child %p rect %s\n", *child, wine_dbgstr_rect( &rect ) );
++
++            offset_viewport_org( hdc, rect.left, rect.top, &org );
++            send_message( *child, WM_PRINT, (WPARAM)hdc,
++                          PRF_NONCLIENT | PRF_CLIENT | PRF_ERASEBKGND | PRF_CHILDREN );
++            set_viewport_org( hdc, org.x, org.y, NULL );
++        }
++        free( list );
++    }
++
++    NtUserReleaseDC( hwnd, hdc );
++    if (surface)
++    {
++        TRACE( "DQX post-surface force flush hwnd %p surface %p rect %s\n",
++               hwnd, surface, wine_dbgstr_rect( &surface->rect ) );
++        window_surface_lock( surface );
++        add_bounds_rect( &surface->bounds, &surface->rect );
++        window_surface_unlock( surface );
++        window_surface_flush( surface );
++    }
++}
++
++static BOOL dqx_is_splash_sized_surface( const struct window_surface *surface )
++{
++    return surface->rect.right - surface->rect.left <= 640 &&
++           surface->rect.bottom - surface->rect.top <= 512;
++}
++
+ static HICON get_icon_info( HICON icon, ICONINFO *ii )
+ {
+     return icon && NtUserGetIconInfo( icon, ii, NULL, NULL, NULL, 0 ) ? icon : NULL;
+@@ -2439,6 +2489,9 @@
+ 
+         user_driver->pWindowPosChanged( hwnd, insert_after, owner_hint, swp_flags, &monitor_rects,
+                                         get_driver_window_surface( new_surface, raw_dpi ) );
++        if (!is_child && (swp_flags & SWP_SHOWWINDOW) && new_surface && new_surface != &dummy_surface &&
++            dqx_is_splash_sized_surface( new_surface ))
++            dqx_print_visible_children_after_surface_show( hwnd, new_surface );
+         update_client_surfaces( toplevel );
+     }
+ 
