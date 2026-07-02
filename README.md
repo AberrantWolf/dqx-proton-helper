@@ -174,6 +174,10 @@ Same steps, automated, with prerequisite checks:
 # fallback: ./dqx.sh play-umu            # GE-Proton11 through umu
 ```
 
+For normal downloads, use the latest `dqx-wine-helper-*.zip` release asset. That
+small archive contains the runtime scripts and concise docs. The larger repository keeps
+research notes, diagnostics, and source patches for maintainers.
+
 > When installing the game, pick the default location, otherwise the launch helper
 > script won't find it.
 

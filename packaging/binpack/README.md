@@ -4,6 +4,11 @@ The source repository should stay reviewable: scripts, source, patches, build
 recipes, and documentation only. Generated Windows helpers and CrossOver binary
 deltas belong in a separate release asset.
 
+These are dependency packs fetched by `./dqx.sh fetch-binpack`; they are not the
+main user-facing release. The GitHub "Latest" release should point at the small
+script archive produced by `../make-release.sh`, for example
+`dqx-wine-helper-v20260702.zip`.
+
 Recommended release asset names:
 
 ```text
