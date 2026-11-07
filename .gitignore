@@ -20,3 +20,7 @@ patches/crossover-26.2/artifacts/*
 !patches/crossover-26.2/artifacts/README.md
 patches/crossover-26.2/binary-deltas/*.bsdiff
 patches/crossover-26.2/binary-deltas/*.tmp
+patches/crossover-26.3/artifacts/*
+!patches/crossover-26.3/artifacts/README.md
+patches/crossover-26.3/binary-deltas/*.bsdiff
+patches/crossover-26.3/binary-deltas/*.tmp

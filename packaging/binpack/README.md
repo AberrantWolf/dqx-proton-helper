@@ -4,16 +4,15 @@ The source repository should stay reviewable: scripts, source, patches, build
 recipes, and documentation only. Generated Windows helpers and CrossOver binary
 deltas belong in a separate release asset.
 
-These are dependency packs fetched by `./dqx.sh fetch-binpack`; they are not the
-main user-facing release. The GitHub "Latest" release should point at the small
-script archive produced by `../make-release.sh`, for example
-`dqx-wine-helper-v20260702.zip`.
+The Win32 pack is downloaded separately by `./dqx.sh fetch-binpack`. The
+CrossOver 26.3 patch pack ships inside the user release archive produced by
+`../make-release.sh` and can also be installed manually.
 
 Recommended release asset names:
 
 ```text
 dqx-wine-helper-win32-binpack-vYYYYMMDD.zip
-dqx-wine-helper-macos-crossover-26.2-patches-vYYYYMMDD.zip
+dqx-wine-helper-macos-crossover-26.3-patches-vYYYYMMDD.zip
 ```
 
 Recommended `win32` contents:
@@ -24,11 +23,12 @@ bin/dqx-launcher-clip.exe
 repro/dqx-first-map-repro.exe
 ```
 
-Recommended `macos-crossover-26.2` contents:
+`macos-crossover-26.3` contents:
 
 ```text
 manifest.json
-patches/crossover-26.2/binary-deltas/*.bsdiff
+patches/crossover-26.3/binary-deltas/winegstreamer.dll.bsdiff
+patches/crossover-26.3/binary-deltas/winegstreamer.so.bsdiff
 ```
 
 `manifest.json` records SHA-256 for every payload file. For CrossOver deltas,
@@ -51,10 +51,10 @@ Maintainer flow:
 1. Build helper executables or deltas locally.
 2. Copy them under an ignored input directory using their final paths, for example
    `build/binpack-win32-input/bin/dqx-launcher-clip.exe` or
-   `build/binpack-macos-patches-input/patches/crossover-26.2/binary-deltas/win32u.so.bsdiff`.
+   `build/binpack-macos-26.3-input/patches/crossover-26.3/binary-deltas/winegstreamer.so.bsdiff`.
 3. Run `./packaging/make-binpack.sh`.
-4. Upload the generated zip from `build/binpack-release/` to a GitHub Release.
-5. Publish the zip SHA-256 in the release notes.
+4. Pin the zip SHA-256 and use `./packaging/make-release.sh` to bundle the
+   CrossOver pack. Publish a separate dependency asset for new Win32 packs.
 
 User flow:
 
@@ -68,6 +68,7 @@ Manual/offline user flow:
 DQX_BINPACK_SHA256=<zip sha256 from release notes> ./dqx.sh binpack /path/to/binpack.zip
 ```
 
-The helper detects whether the zip is a win32 helper pack or a CrossOver patch pack,
-extracts it into the matching ignored `vendor/binpack/...` directory, refuses full
-CrossOver modules, and then uses files from there during `doctor`, `setup`, and `play`.
+The helper detects the pack type, stages the supported files, and installs them in
+the matching ignored `vendor/binpack/...` directory. Files outside the supported
+paths are preserved. The CrossOver installer accepts both movie deltas in
+[the patch set](../../patches/crossover-26.3/) and refuses full modules.

@@ -6,27 +6,39 @@ IPAMona font download/install, font aliases, installer launch, durable GStreamer
 configuration, launch, and hash verification of the known patched modules. Anything marked
 *(unverified)* is a working theory, not fact.
 
-Quick path:
+Use **CrossOver 26.3 build `26.3.0.39832`** with the official universal macOS
+GStreamer framework. Opening playback was verified with GStreamer 1.28.4.
+Allow **at least 48 GB free** for DQX, plus temporary space for updates.
+[Official Windows requirements](https://hiroba.dqx.jp/sc/public/playguide/guide_1_1_win)
 
 ```sh
-./dqx.sh doctor
 ./dqx.sh fetch-binpack
 ./dqx.sh setup
+./dqx.sh doctor
 ./dqx.sh install /path/to/Setup.exe
 ./dqx.sh play
 ```
 
-The `fetch-binpack` step is the no-build-environment path for normal users. It downloads
-two pinned release assets:
+Quit CrossOver and its Windows programs before running setup. If upgrading an
+existing DQX bottle, use the same `CX_BOTTLE` name and skip the game installer.
+Point `CX_APP` at the 26.3 bundle when keeping 26.2 installed separately.
 
-- `dqx-wine-helper-win32-binpack-v20260701.zip`, installed to `vendor/binpack/win32/`.
-- `dqx-wine-helper-macos-crossover-26.2-patches-v20260701.zip`, installed to
-  `vendor/binpack/macos-crossover-26.2/`.
+`fetch-binpack` verifies and installs these packs:
+
+- `dqx-wine-helper-win32-binpack-v20260701.zip`, downloaded into the cache and
+  installed to `vendor/binpack/win32/`.
+- `dqx-wine-helper-macos-crossover-26.3-patches-v20261107.zip`, included in the
+  user release and installed to `vendor/binpack/macos-crossover-26.3/`.
 
 The first contains small Win32 helper executables such as `bin/dqx-launcher-clip.exe`. The
-second contains exact-hash `.bsdiff` deltas for the CrossOver 26.2 modules.
+second contains exact-hash `.bsdiff` deltas for the two 26.3 movie modules.
+`setup` verifies both deltas, locally signs the patched app, then updates the
+bottle and verifies its 32-bit DLL. The updater redraw helper is optional.
 
-## Stack
+## CrossOver 26.2 reference
+
+For 26.2, use the [July 2026 release](https://github.com/AberrantWolf/dqx-proton-helper/releases/tag/v20260702).
+The build details below document the earlier 26.2 tests.
 
 - **CrossOver 26.2** (`26.2p0.7.1`, build `26.2.0.39821`) — Wine 11.0 base, x86_64 under
   Rosetta 2, new-WoW64 (32-bit PE guest + 64-bit Unix host). DQX is 32-bit, so it loads the
@@ -208,9 +220,6 @@ Previous findings that still seem useful:
   characters on screen, persistent, random per-frame. Removing the MVK arg-buffers env var
   (above) didn't fix it. Working theory *(unverified)*: dynamic vertex-buffer / submission
   sync under load. Next experiment, not yet applied: `dxgi.maxFrameLatency = 1`.
-- **Make the CrossOver patches fully turnkey.** Binary deltas are generated and supported
-  by the helper, but the split release assets still need to be uploaded and pinned before
-  fresh users can run the whole path without local artifacts.
 - **CodeWeavers bug report.** The H&S behavior is still worth reporting. Minimal repro:
   DQX's `DQXLauncher.exe` creates a splash-sized parent surface and a visible 640x480
   child/static `SS_BITMAP` H&S control; the child bitmap is present but is not shown unless
@@ -226,6 +235,35 @@ Previous findings that still seem useful:
 
 ## New CrossOver versions
 
+### Stock CrossOver 26.3 test
+
+On 2026-11-07, stock CrossOver 26.3 build `26.3.0.39832` in a separate app
+and fresh bottle displayed the health-and-safety warning and first-run
+configuration without the `win32u.so` patch. The opening movie stayed black
+and ignored Esc. Stopping `DQXTitle.exe` let the launcher update the game to
+`8.1.347066.1`. The progress bar advanced on its own but could briefly
+disappear after a click. The countdown kept updating.
+
+Scott then logged in and played on stock 26.3. The codec probe confirmed that
+bundled GStreamer 1.24 rejects the installed 1.28 libav plugin.
+
+The opening movie was retested on DQX 8.1 in fresh bottles using a separate
+26.3 app with modules rebuilt from the CodeWeavers 26.3 source:
+
+- **Framework bridge only:** video played with heavy stutter and no audio,
+  then froze at the previous stopping point. The trace showed repeated
+  attempts to read audio with no output available. A WMA decoder probe
+  reproduced the stale `INCOMPLETE` flag when the decoder needed input.
+- **Framework bridge and i386 WMA fix:** the same probe cleared the flag.
+  The opening movie played with audio past the old freeze point and ended
+  normally. Other movies were untested.
+
+CrossOver 26.3 is now the supported baseline. The health-and-safety patch
+remains specific to the 26.2 setup. See the [26.3 patch set](patches/crossover-26.3/)
+for the movie module build and pack details.
+
+### Porting checklist
+
 Treat every CrossOver update as a new port, not as a hash bump. CrossOver updates can change
 the Wine base, bundled GStreamer, macdrv behavior, module paths, signatures, and rpaths.
 
@@ -233,9 +271,9 @@ Recommended maintainer flow:
 
 1. Install the new CrossOver into a separate app bundle first, for example
    `/Applications/CrossOver-26.3.app`, and keep the last known-good app around.
-2. Run a completely stock smoke test with a fresh or copied test bottle:
-   `./dqx.sh doctor`, `setup`, `install`, and `play` with `CX_APP` pointed at
-   the new app bundle.
+2. Use the new app's GUI to create a fresh test bottle or import a copy of the
+   DQX bottle, then install and launch DQX through that app. The helper's setup
+   and launch commands are gated on the verified build.
 3. Verify the three fixes independently:
    - Launcher startup: DQXBoot splash has no oversized white border, H&S appears, launcher
      reaches the normal/updater UI.
@@ -262,7 +300,6 @@ quietly widening a workaround.
 
 ## Remaining Work
 
-- Upload and pin the split win32 and macOS/CrossOver 26.2 binpack release assets.
 - Add reproducible build scripts for the three patched CrossOver modules.
 - Report the H&S redraw issue and the `winegstreamer` `dwStatus` fix to CodeWeavers.
 - Keep testing graphics/performance regressions from the clean minimal baseline.

@@ -26,12 +26,12 @@ CrossOver is proprietary CodeWeavers software containing Wine and other
 open-source components. This repository must not redistribute CrossOver app
 bundles or full CodeWeavers binary modules.
 
-Source patches under `patches/crossover-26.2/source/` are intended for the
-CrossOver 26.2 Wine source tree. Each patch is offered under the same license
-as the upstream file it modifies, normally Wine's LGPL terms.
+Each source patch is offered under the same license as the upstream Wine file
+it modifies, normally Wine's LGPL terms. The 26.3 movie patch set reuses the
+26.2 WMA source patch.
 
-Local patched modules belong in `patches/crossover-26.2/artifacts/`; that
-directory is ignored except for its README. Binary deltas, when added, must be
+Local patched modules belong in the version's ignored `artifacts/` directory
+under `patches/`. Binary deltas must be
 generated only from verified stock module hashes to verified patched module
 hashes and must not include full CrossOver modules.
 

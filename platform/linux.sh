@@ -104,7 +104,7 @@ launcher_clip_helper() {
   fi
 }
 
-cmd_binpack() {
+cmd_binpack() (
   local pack="${1:-}" pack_abs actual tmp
   [ -n "$pack" ] || die "Usage: ./dqx.sh binpack /path/to/$WIN32_BINPACK_DIST"
   pack_abs="$(abs_existing_file "$pack")" || die "Binpack not found: $pack"
@@ -117,16 +117,17 @@ cmd_binpack() {
   fi
   command -v unzip >/dev/null 2>&1 || die "unzip not found"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/dqx-binpack.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
   unzip -q "$pack_abs" -d "$tmp"
-  [ -f "$tmp/bin/dqx-launcher-clip.exe" ] || { rm -rf "$tmp"; die "Win32 binpack is missing bin/dqx-launcher-clip.exe"; }
-  rm -rf "$DQX_WIN32_BINPACK"
-  mkdir -p "$DQX_WIN32_BINPACK"
-  cp -R "$tmp/." "$DQX_WIN32_BINPACK/"
-  rm -rf "$tmp"
+  [ -f "$tmp/bin/dqx-launcher-clip.exe" ] || die "Win32 binpack is missing bin/dqx-launcher-clip.exe"
+  # shellcheck source=platform/binpack.sh
+  source "$PLATFORM_DIR/binpack.sh"
+  install_win32_binpack "$tmp" "$DQX_WIN32_BINPACK"
   ok "Win32 binpack installed to $DQX_WIN32_BINPACK"
-}
+)
 
-cmd_fetch_binpack() {
+cmd_fetch_binpack() (
+  local download
   mkdir -p "$WIN32_BINPACK_CACHE_DIR"
   if [ -f "$WIN32_BINPACK_CACHE_FILE" ] && [ "$(sha256_file "$WIN32_BINPACK_CACHE_FILE")" = "$WIN32_BINPACK_SHA256" ]; then
     ok "Win32 binpack: cached and verified"
@@ -134,16 +135,17 @@ cmd_fetch_binpack() {
     command -v curl >/dev/null 2>&1 || die "curl not found; cannot download the win32 binpack"
     msg "Downloading win32 helper binpack:"
     msg "  $WIN32_BINPACK_URL"
-    curl -fL --progress-bar -o "$WIN32_BINPACK_CACHE_FILE.tmp" "$WIN32_BINPACK_URL"
-    if [ "$(sha256_file "$WIN32_BINPACK_CACHE_FILE.tmp")" != "$WIN32_BINPACK_SHA256" ]; then
-      rm -f "$WIN32_BINPACK_CACHE_FILE.tmp"
+    download="$(mktemp "$WIN32_BINPACK_CACHE_FILE.XXXXXX")"
+    trap 'rm -f "$download"' EXIT
+    curl -fL --progress-bar -o "$download" "$WIN32_BINPACK_URL"
+    if [ "$(sha256_file "$download")" != "$WIN32_BINPACK_SHA256" ]; then
       die "Downloaded win32 binpack hash did not match the pinned release hash"
     fi
-    mv "$WIN32_BINPACK_CACHE_FILE.tmp" "$WIN32_BINPACK_CACHE_FILE"
+    mv "$download" "$WIN32_BINPACK_CACHE_FILE"
     ok "Win32 binpack: SHA-256 verified"
   fi
   DQX_BINPACK_SHA256="$WIN32_BINPACK_SHA256" cmd_binpack "$WIN32_BINPACK_CACHE_FILE"
-}
+)
 
 # --- Wine discovery / capability probing ---------------------------------------
 

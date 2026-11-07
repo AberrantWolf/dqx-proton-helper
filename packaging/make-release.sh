@@ -4,8 +4,7 @@
 #
 # This is the archive normal users should download from the GitHub "Latest"
 # release. It contains the runtime scripts and concise docs needed to install
-# and play, but not research notes, diagnostic source, or CrossOver source
-# patches.
+# and play, plus the current CrossOver delta pack.
 
 set -euo pipefail
 
@@ -14,11 +13,14 @@ REPO_DIR="$(dirname -- "$SCRIPT_DIR")"
 
 : "${RELEASE_NAME:=dqx-wine-helper-$(date +%Y%m%d)}"
 : "${RELEASE_OUTPUT:=$REPO_DIR/build/release}"
+CX_PATCH_BINPACK=dqx-wine-helper-macos-crossover-26.3-patches-v20261107.zip
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 msg() { printf '>> %s\n' "$*"; }
 
 command -v zip >/dev/null 2>&1 || die "zip not found"
+[ -f "$REPO_DIR/build/binpack-release/$CX_PATCH_BINPACK" ] \
+  || die "Build the CrossOver patch pack first. See patches/crossover-26.3/README.md."
 
 mkdir -p "$RELEASE_OUTPUT"
 work="$(mktemp -d "${TMPDIR:-/tmp}/dqx-release.XXXXXX")"
@@ -37,6 +39,7 @@ copy_file macos-crossover.sh
 copy_file macos-fix-dqx-fonts.sh
 copy_file platform/linux.sh
 copy_file platform/macos-crossover.sh
+copy_file platform/binpack.sh
 copy_file platform/README.md
 copy_file README.md
 copy_file MACOS.md
@@ -44,12 +47,20 @@ copy_file UI-SCALING.md
 copy_file MOVIES.md
 copy_file LICENSES.md
 copy_file UNLICENSE
+copy_file patches/crossover-26.3/README.md
+copy_file patches/crossover-26.3/artifacts/README.md
+copy_file patches/crossover-26.2/source/winegstreamer-wma-dwstatus.patch
+copy_file "build/binpack-release/$CX_PATCH_BINPACK" "$CX_PATCH_BINPACK"
 
 cat >"$work/$RELEASE_NAME/QUICKSTART.md" <<'EOF'
 # DQX Wine Helper Quickstart
 
-This is the small user-facing release archive. It does not include the game,
-CrossOver, Wine, GStreamer, or generated binary helper packs.
+This archive contains the helper scripts and the CrossOver movie patch deltas.
+Install the game, Wine or CrossOver, and GStreamer separately.
+
+Allow at least 48 GB of free disk space for DQX. Updates can temporarily need
+more space.
+[Official Windows requirements](https://hiroba.dqx.jp/sc/public/playguide/guide_1_1_win)
 
 ## Linux
 
@@ -63,18 +74,20 @@ CrossOver, Wine, GStreamer, or generated binary helper packs.
 
 ## macOS / CrossOver
 
-Install CrossOver and the official macOS GStreamer framework first, then:
+Install **CrossOver 26.3 build `26.3.0.39832`** and the official universal macOS
+GStreamer framework. The movie fixes were verified with GStreamer 1.28.4.
+Quit CrossOver and its Windows programs before running setup.
 
 ```sh
-./dqx.sh doctor
 ./dqx.sh fetch-binpack
 ./dqx.sh setup
+./dqx.sh doctor
 ./dqx.sh install /path/to/Setup.exe
 ./dqx.sh play
 ```
 
-`fetch-binpack` downloads pinned release assets for the small Win32 helper
-executables and, on macOS/CrossOver, the CrossOver 26.2 binary deltas.
+`fetch-binpack` downloads the pinned Win32 helper pack and, on macOS, verifies
+and installs the CrossOver 26.3 movie delta pack included in this archive.
 
 See `README.md` for the full Linux path and `MACOS.md` for the current
 CrossOver-specific notes.

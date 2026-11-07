@@ -80,7 +80,8 @@ days, so I'm not precious about it.
 - **Your DQX installer** — the "All-In-One" `Setup.exe`, or the trial's
   `DQXInstaller_ft.exe`.
 - An active **Square Enix account** with DQX registered.
-- ~**35 GB+** free disk (the client download alone is ~30 GB).
+- **48 GB or more** free disk for DQX. Updates can temporarily need more space.
+  [Official Windows requirements](https://hiroba.dqx.jp/sc/public/playguide/guide_1_1_win)
 
 Run `./dqx.sh doctor` to check the selected Wine layout and active mode, fonts, Gecko,
 plain-Wine media/graphics dependencies, and the optional GE-Proton11/umu fallback.
@@ -175,8 +176,8 @@ Same steps, automated, with prerequisite checks:
 ```
 
 For normal downloads, use the latest `dqx-wine-helper-*.zip` release asset. That
-small archive contains the runtime scripts and concise docs. The larger repository keeps
-research notes, diagnostics, and source patches for maintainers.
+small archive contains the runtime scripts, setup docs, and current CrossOver
+movie deltas. The repository keeps research notes and diagnostics for maintainers.
 
 > When installing the game, pick the default location, otherwise the launch helper
 > script won't find it.
@@ -223,21 +224,23 @@ registry alternative, and DPI checks are in
 
 ### macOS / CrossOver
 
-For the current CrossOver path, use:
+Use **CrossOver 26.3 build `26.3.0.39832`** on Apple Silicon and allow at least
+48 GB of free disk space for DQX. Install the official universal macOS
+GStreamer framework and quit CrossOver and its Windows programs before setup.
 
 ```sh
-./dqx.sh doctor
 ./dqx.sh fetch-binpack
 ./dqx.sh setup
+./dqx.sh doctor
 ./dqx.sh install /path/to/Setup.exe
 ./dqx.sh play
 ```
 
-The binpack step is optional but recommended for normal users: it downloads pinned release
-assets, verifies their SHA-256 hashes, and installs prebuilt helpers without requiring
-Xcode, Homebrew, MinGW, or a local Wine/CrossOver build tree. The packs are split by
-purpose: a shared `win32` pack for small Wine helper executables, and a macOS/CrossOver
-26.2 patch pack for hash-gated `.bsdiff` module deltas.
+The binpack step downloads the Win32 helpers and verifies the CrossOver 26.3
+movie deltas included in the user release. Stock CrossOver needs the deltas or
+the exact patched modules. Setup locally signs the patched app bundle and
+refreshes the bottle's 32-bit movie DLL. `doctor` checks both app modules and
+the bottle's DLL.
 
 On macOS, `./dqx.sh` auto-detects CrossOver and delegates to the CrossOver platform
 module. The helper refreshes the measured-good IPAMona/Ume font aliases, writes durable
@@ -245,8 +248,8 @@ CrossOver bottle environment variables for `WINEPATH` and GStreamer, runs the in
 from its own directory, starts the updater progress helper, and verifies the known-good
 patched CrossOver module hashes. It does **not** redistribute CrossOver binaries; local
 patch artifacts, if used, belong in
-[patches/crossover-26.2/artifacts](patches/crossover-26.2/artifacts/). See
-[MACOS.md](MACOS.md) for the current verified stack and remaining packaging caveats.
+[patches/crossover-26.3/artifacts](patches/crossover-26.3/artifacts/). See
+[MACOS.md](MACOS.md) for the verified stack and upgrade steps.
 
 If you already made the bottle before this font fix, run `./dqx.sh fonts` once and then
 stop every Wine/CrossOver process in that bottle before testing again.
